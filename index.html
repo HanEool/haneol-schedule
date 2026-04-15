@@ -113,6 +113,7 @@
   .care-soon{background:var(--gold-soft);color:var(--gold)}
   .care-overdue{background:var(--rose-soft);color:var(--rose)}
   .care-scheduled{background:var(--sky-soft);color:var(--sky)}
+  .care-habit{background:var(--accent-soft);color:var(--accent)}
 
   .mode-toggle{display:flex;gap:4px;margin-bottom:12px}
   .mode-btn{
@@ -600,8 +601,10 @@ function loadCares(){
   apiGet({action:'getCares'}).then(function(d){caresCache=d;renderCares()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
 }
 function getCareStatus(care){
+  var cycle=parseInt(care.cycle);
+  if(!cycle){return {label:'습관',cls:'habit',progress:0,isHabit:true}}
   var today=new Date();today.setHours(0,0,0,0);
-  var cycle=parseInt(care.cycle)||365,lastDone=care.lastDone?new Date(care.lastDone+'T00:00:00'):null,nextDate=care.nextDate?new Date(care.nextDate+'T00:00:00'):null;
+  var lastDone=care.lastDone?new Date(care.lastDone+'T00:00:00'):null,nextDate=care.nextDate?new Date(care.nextDate+'T00:00:00'):null;
   var daysSince=lastDone?Math.floor((today-lastDone)/(1000*60*60*24)):null;
   var daysUntilDue=lastDone?cycle-daysSince:null;
   var daysUntilNext=nextDate?Math.floor((nextDate-today)/(1000*60*60*24)):null;
@@ -619,7 +622,7 @@ function getCareStatus(care){
   }
   else if(nextDate){label='예정 ('+formatDate(nextDate)+')';cls='scheduled'}
   else{label='주의';cls='overdue'}
-  return {label:label,cls:cls,progress:progress};
+  return {label:label,cls:cls,progress:progress,isHabit:false};
 }
 function renderCares(){
   var c=document.getElementById('careList');
@@ -637,11 +640,14 @@ function renderCares(){
   var filtered=careFilterTag?caresCache.filter(function(care){return care.keywords&&care.keywords.indexOf(careFilterTag)!==-1}):caresCache;
   c.innerHTML=tagHtml+filtered.map(function(care){
     var s=getCareStatus(care),dur=parseInt(care.duration)||1;
+    var kwText=care.keywords?'<div class="card-meta" style="margin-top:4px">🔍 '+care.keywords+'</div>':'';
+    var memoText=care.memo?'<div class="card-meta" style="margin-top:4px">'+care.memo+'</div>':'';
+    if(s.isHabit){
+      return '<div class="card"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta"><span class="care-status care-habit">습관</span></div>'+kwText+memoText+'</div>';
+    }
     var cycleText=care.cycle+'일 주기'+(dur>1?' · '+dur+'일간 진행':'');
     var lastText=care.lastDone?'마지막: '+care.lastDone:'마지막: -';
     var nextText=care.nextDate?'예정: '+care.nextDate:'';
-    var kwText=care.keywords?'<div class="card-meta" style="margin-top:4px">🔍 '+care.keywords+'</div>':'';
-    var memoText=care.memo?'<div class="card-meta" style="margin-top:4px">'+care.memo+'</div>':'';
     return '<div class="card"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="markCareDone(\''+care.id+'\')">완료</button><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta">'+cycleText+' <span class="care-status care-'+s.cls+'">'+s.label+'</span></div><div class="card-meta" style="margin-top:4px">'+lastText+(nextText?' · '+nextText:'')+'</div>'+kwText+memoText+'<div class="care-progress"><div class="care-progress-bar '+s.cls+'" style="width:'+Math.round(s.progress*100)+'%"></div></div></div>';
   }).join('');
 }
@@ -662,7 +668,7 @@ function saveCare(){
   if(isSaving)return;
   var id=document.getElementById('careEditId').value,title=document.getElementById('careTitle').value.trim(),
     cycle=document.getElementById('careCycle').value;
-  if(!title||!cycle){showToast('이름과 주기를 입력해주세요.');return}
+  if(!title){showToast('이름을 입력해주세요.');return}
   isSaving=true;setSaveBtn('careFormOverlay',true);
   var data={title:title,cycle:cycle,duration:document.getElementById('careDuration').value||'1',lastDone:document.getElementById('careLastDone').value||'',nextDate:document.getElementById('careNextDate').value||'',keywords:document.getElementById('careKeywords').value||'',memo:document.getElementById('careMemo').value||''};
   var p;if(id){data.id=id;p=apiWrite('updateCare',data)}else{p=apiWrite('addCare',data)}
