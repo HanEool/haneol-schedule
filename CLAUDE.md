@@ -41,6 +41,15 @@ GitHub Pages (index.html)  ←→  Google Apps Script (API)  ←→  Google Shee
 - 루틴ID: 빈 값이면 순수 일정, 값이 있으면 루틴에서 파생된 예외
 - 상태: 'active', 'cancelled', 'modified'
 
+### 케어 시트 (8열)
+아이디 | 이름 | 주기(일) | 소요기간(일) | 마지막완료일 | 예정일 | 키워드 | 메모
+
+- 주기(일): 숫자 (예: 365, 180)
+- 소요기간(일): 숫자 (기본값 1, 예: 30이면 30일간 진행)
+- 마지막완료일: "yyyy-MM-dd" 또는 빈 값
+- 예정일: "yyyy-MM-dd" 또는 빈 값
+- 키워드: 쉼표 구분 검색어 (일정 매칭용)
+
 ## API 엔드포인트 (모두 GET)
 
 모든 쓰기 작업도 GET으로 처리 (Apps Script POST의 CORS 문제 회피).
@@ -50,6 +59,7 @@ GitHub Pages (index.html)  ←→  Google Apps Script (API)  ←→  Google Shee
 - `?action=getRoutines`
 - `?action=getEvents&startDate=yyyy-MM-dd&endDate=yyyy-MM-dd`
 - `?action=getWeekView&date=yyyy-MM-dd`
+- `?action=getCares`
 
 ### 루틴
 - `?action=addRoutine&data={JSON}`
@@ -60,6 +70,12 @@ GitHub Pages (index.html)  ←→  Google Apps Script (API)  ←→  Google Shee
 - `?action=addEvent&data={JSON}`
 - `?action=updateEvent&data={JSON}`
 - `?action=deleteEvent&id=event_xxx`
+
+### 케어
+- `?action=getCares`
+- `?action=addCare&data={JSON}`
+- `?action=updateCare&data={JSON}`
+- `?action=deleteCare&id=care_xxx`
 
 ### 동기화
 - `?action=syncCalendar`
