@@ -1,0 +1,15 @@
+{
+  "name": "한얼 스케줄",
+  "short_name": "스케줄",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f1ed",
+  "theme_color": "#9b8abf",
+  "icons": [
+    {
+      "src": "app-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
