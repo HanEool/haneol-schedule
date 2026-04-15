@@ -370,7 +370,7 @@ function renderWeekView(data,monday){
     else items.forEach(function(it){
       var cls='week-item',bc='badge-event',bt='일정';
       if(it.status==='cancelled'){cls+=' cancelled';bc='badge-cancelled';bt='취소'}
-      else if(it.isRoutine||it.routineId){cls+=(it.status==='modified'||it.isException?' modified':' routine');bc='badge-routine';bt='루틴'}
+      else if(it.isRoutine||it.routineId){cls+=' routine';bc='badge-routine';bt='루틴'}
       else cls+=' event';
       h+='<div class="'+cls+'"><span class="week-item-time">'+it.startTime+' – '+it.endTime+'</span><span class="week-item-title">'+it.title+'</span><span class="badge '+bc+'">'+bt+'</span></div>';
     });
