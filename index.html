@@ -114,6 +114,29 @@
   .care-overdue{background:var(--rose-soft);color:var(--rose)}
   .care-scheduled{background:var(--sky-soft);color:var(--sky)}
 
+  .mode-toggle{display:flex;gap:4px;margin-bottom:12px}
+  .mode-btn{
+    flex:1;padding:8px 0;text-align:center;font-size:12px;font-weight:500;
+    color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);
+    border-radius:8px;cursor:pointer;font-family:inherit;transition:all .2s;
+  }
+  .mode-btn.active{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+
+  .consecutive-fields{display:none}
+  .consecutive-fields.show{display:flex;gap:12px}
+  .weekly-fields.hide{display:none}
+
+  .tag-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .tag-chip{
+    padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:500;
+    background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);
+    cursor:pointer;transition:all .2s;font-family:inherit;
+  }
+  .tag-chip:hover{border-color:var(--accent);color:var(--accent)}
+  .tag-chip.active{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+
+  .consecutive-badge{font-size:12px;color:var(--accent);font-weight:500;margin-top:10px}
+
   .care-progress{margin-top:8px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden}
   .care-progress-bar{height:100%;border-radius:2px;transition:width .3s}
   .care-progress-bar.ok{background:var(--mint)}
@@ -282,25 +305,37 @@
     <div class="form-title" id="routineFormTitle">루틴 추가</div>
     <input type="hidden" id="routineEditId">
     <div class="form-group"><label>이름</label><input type="text" id="routineTitle" placeholder="예: 힘의집 운동"></div>
-    <div class="form-group">
-      <label>요일</label>
-      <div class="day-selector" id="daySelector">
-        <button class="day-toggle" data-day="월">월</button>
-        <button class="day-toggle" data-day="화">화</button>
-        <button class="day-toggle" data-day="수">수</button>
-        <button class="day-toggle" data-day="목">목</button>
-        <button class="day-toggle" data-day="금">금</button>
-        <button class="day-toggle" data-day="토">토</button>
-        <button class="day-toggle" data-day="일">일</button>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="modeWeekly" onclick="setRoutineMode('weekly')">요일 반복</button>
+      <button class="mode-btn" id="modeConsecutive" onclick="setRoutineMode('consecutive')">연속 반복</button>
+    </div>
+    <div id="weeklyFields" class="weekly-fields">
+      <div class="form-group">
+        <label>요일</label>
+        <div class="day-selector" id="daySelector">
+          <button class="day-toggle" data-day="월">월</button>
+          <button class="day-toggle" data-day="화">화</button>
+          <button class="day-toggle" data-day="수">수</button>
+          <button class="day-toggle" data-day="목">목</button>
+          <button class="day-toggle" data-day="금">금</button>
+          <button class="day-toggle" data-day="토">토</button>
+          <button class="day-toggle" data-day="일">일</button>
+        </div>
       </div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>시작</label><input type="time" id="routineStart"></div>
       <div class="form-group"><label>종료</label><input type="time" id="routineEnd"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>시작일 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineStartDate"></div>
-      <div class="form-group"><label>기한 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineEndDate"></div>
+    <div id="weeklyDateFields" class="weekly-fields">
+      <div class="form-row">
+        <div class="form-group"><label>시작일 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineStartDate"></div>
+        <div class="form-group"><label>기한 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineEndDate"></div>
+      </div>
+    </div>
+    <div id="consecutiveFields" class="consecutive-fields">
+      <div class="form-group"><label>시작일</label><input type="date" id="routineConsecStart"></div>
+      <div class="form-group"><label>연속일수</label><input type="number" id="routineConsecDays" placeholder="10" min="1"></div>
     </div>
     <div class="form-group"><label>주소 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineAddress" placeholder="예: 서대문구 신촌로 00"></div>
     <div class="form-group"><label>메모 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineMemo" placeholder="메모"></div>
@@ -367,7 +402,7 @@
 
 <script>
 var API_URL='https://script.google.com/a/macros/somaandbody.com/s/AKfycbz23iMsMa7QiETq50kVDTj8KUtRoSzBqsZZhkDCqC7ZZmlyFjv5IqJ6E_KAKyZT3IFI/exec';
-var currentWeekDate=new Date(),currentEventMonth=new Date(),routinesCache=[],eventsCache=[],caresCache=[],isSaving=false;
+var currentWeekDate=new Date(),currentEventMonth=new Date(),routinesCache=[],eventsCache=[],caresCache=[],isSaving=false,routineMode='weekly',careFilterTag='';
 
 function toggleTheme(){
   var h=document.documentElement,n=h.getAttribute('data-theme')==='bright'?'dark':'bright';
@@ -418,6 +453,25 @@ function renderWeekView(data,monday){
   c.innerHTML=h;
 }
 
+function setRoutineMode(mode){
+  routineMode=mode;
+  document.getElementById('modeWeekly').classList.toggle('active',mode==='weekly');
+  document.getElementById('modeConsecutive').classList.toggle('active',mode==='consecutive');
+  var wf=document.querySelectorAll('.weekly-fields'),cf=document.getElementById('consecutiveFields');
+  wf.forEach(function(el){el.classList.toggle('hide',mode==='consecutive')});
+  cf.classList.toggle('show',mode==='consecutive');
+}
+function isConsecutiveRoutine(r){
+  var allDays='월,화,수,목,금,토,일';
+  var days=r.dayOfWeek.split(',').map(function(d){return d.trim()}).sort().join(',');
+  var sorted=allDays.split(',').sort().join(',');
+  return days===sorted&&r.startDate&&r.endDate;
+}
+function getConsecutiveDays(r){
+  var s=new Date(r.startDate+'T00:00:00'),e=new Date(r.endDate+'T00:00:00');
+  return Math.round((e-s)/(1000*60*60*24))+1;
+}
+
 function loadRoutines(){
   var c=document.getElementById('routineList');c.innerHTML='<div class="loading">불러오는 중...</div>';
   apiGet({action:'getRoutines'}).then(function(d){routinesCache=d;renderRoutines()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
@@ -427,12 +481,21 @@ function renderRoutines(){
   if(!routinesCache.length){c.innerHTML='<div class="empty-state">등록된 루틴이 없습니다.</div>';return}
   var all=['월','화','수','목','금','토','일'];
   c.innerHTML=routinesCache.map(function(r){
-    var ad=r.dayOfWeek.split(',').map(function(d){return d.trim()});
-    var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
-    var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
-    var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
+    var isCon=isConsecutiveRoutine(r);
     var extra='';if(r.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+r.address+'</div>';if(r.memo)extra+='<div class="card-meta" style="margin-top:4px">'+r.memo+'</div>';
-    return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div><div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div></div>';
+    var bottomHtml;
+    if(isCon){
+      var n=getConsecutiveDays(r);
+      bottomHtml='<div class="consecutive-badge">연속 '+n+'일 ('+r.startDate+' ~ '+r.endDate+')</div>';
+    }else{
+      var ad=r.dayOfWeek.split(',').map(function(d){return d.trim()});
+      var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
+      var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
+      var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
+      bottomHtml='<div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div>';
+      return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div>'+bottomHtml+'</div>';
+    }
+    return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div><div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+bottomHtml+'</div>';
   }).join('');
 }
 function openRoutineForm(r){
@@ -441,12 +504,24 @@ function openRoutineForm(r){
   document.getElementById('routineTitle').value=r?r.title:'';
   document.getElementById('routineStart').value=r?r.startTime:'';
   document.getElementById('routineEnd').value=r?r.endTime:'';
-  document.getElementById('routineStartDate').value=r?r.startDate:'';
-  document.getElementById('routineEndDate').value=r?r.endDate:'';
   document.getElementById('routineAddress').value=r?r.address:'';
   document.getElementById('routineMemo').value=r?r.memo:'';
-  var ad=r?r.dayOfWeek.split(',').map(function(d){return d.trim()}):[];
-  document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',ad.includes(b.dataset.day))});
+  if(r&&isConsecutiveRoutine(r)){
+    setRoutineMode('consecutive');
+    document.getElementById('routineConsecStart').value=r.startDate;
+    document.getElementById('routineConsecDays').value=getConsecutiveDays(r);
+    document.getElementById('routineStartDate').value='';
+    document.getElementById('routineEndDate').value='';
+    document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.remove('selected')});
+  }else{
+    setRoutineMode('weekly');
+    document.getElementById('routineStartDate').value=r?r.startDate:'';
+    document.getElementById('routineEndDate').value=r?r.endDate:'';
+    document.getElementById('routineConsecStart').value='';
+    document.getElementById('routineConsecDays').value='';
+    var ad=r?r.dayOfWeek.split(',').map(function(d){return d.trim()}):[];
+    document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',ad.includes(b.dataset.day))});
+  }
   document.getElementById('routineFormOverlay').classList.add('open');
 }
 function editRoutine(id){var r=routinesCache.find(function(r){return r.id===id});if(r)openRoutineForm(r)}
@@ -454,10 +529,23 @@ function saveRoutine(){
   if(isSaving)return;
   var id=document.getElementById('routineEditId').value,title=document.getElementById('routineTitle').value.trim(),
     st=document.getElementById('routineStart').value,et=document.getElementById('routineEnd').value;
-  var sd=[];document.querySelectorAll('#daySelector .day-toggle.selected').forEach(function(b){sd.push(b.dataset.day)});
-  if(!title||!st||!et||!sd.length){showToast('모든 항목을 입력해주세요.');return}
+  var dayOfWeek,startDate,endDate;
+  if(routineMode==='consecutive'){
+    var consecStart=document.getElementById('routineConsecStart').value,consecDays=parseInt(document.getElementById('routineConsecDays').value);
+    if(!title||!st||!et||!consecStart||!consecDays){showToast('모든 항목을 입력해주세요.');return}
+    dayOfWeek='월,화,수,목,금,토,일';
+    startDate=consecStart;
+    var ed=new Date(consecStart+'T00:00:00');ed.setDate(ed.getDate()+consecDays-1);
+    endDate=formatDate(ed);
+  }else{
+    var sd=[];document.querySelectorAll('#daySelector .day-toggle.selected').forEach(function(b){sd.push(b.dataset.day)});
+    if(!title||!st||!et||!sd.length){showToast('모든 항목을 입력해주세요.');return}
+    dayOfWeek=sd.join(',');
+    startDate=document.getElementById('routineStartDate').value||'';
+    endDate=document.getElementById('routineEndDate').value||'';
+  }
   isSaving=true;setSaveBtn('routineFormOverlay',true);
-  var data={title:title,startTime:st,endTime:et,dayOfWeek:sd.join(','),startDate:document.getElementById('routineStartDate').value||'',endDate:document.getElementById('routineEndDate').value||'',address:document.getElementById('routineAddress').value||'',memo:document.getElementById('routineMemo').value||''};
+  var data={title:title,startTime:st,endTime:et,dayOfWeek:dayOfWeek,startDate:startDate,endDate:endDate,address:document.getElementById('routineAddress').value||'',memo:document.getElementById('routineMemo').value||''};
   var p;if(id){data.id=id;p=apiWrite('updateRoutine',data)}else{p=apiWrite('addRoutine',data)}
   p.then(function(){showToast(id?'루틴이 수정되었습니다.':'루틴이 추가되었습니다.');closeForm('routineFormOverlay');loadRoutines()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('routineFormOverlay',false)});
 }
@@ -536,7 +624,18 @@ function getCareStatus(care){
 function renderCares(){
   var c=document.getElementById('careList');
   if(!caresCache.length){c.innerHTML='<div class="empty-state">등록된 케어 항목이 없습니다.</div>';return}
-  c.innerHTML=caresCache.map(function(care){
+  var allTags=[];
+  caresCache.forEach(function(care){
+    if(care.keywords){care.keywords.split(',').forEach(function(k){k=k.trim();if(k&&allTags.indexOf(k)===-1)allTags.push(k)})}
+  });
+  var tagHtml='';
+  if(allTags.length){
+    tagHtml='<div class="tag-filter"><button class="tag-chip'+(careFilterTag===''?' active':'')+'" onclick="setCareFilter(\'\')">전체</button>';
+    allTags.forEach(function(t){tagHtml+='<button class="tag-chip'+(careFilterTag===t?' active':'')+'" onclick="setCareFilter(\''+t+'\')">'+t+'</button>'});
+    tagHtml+='</div>';
+  }
+  var filtered=careFilterTag?caresCache.filter(function(care){return care.keywords&&care.keywords.indexOf(careFilterTag)!==-1}):caresCache;
+  c.innerHTML=tagHtml+filtered.map(function(care){
     var s=getCareStatus(care),dur=parseInt(care.duration)||1;
     var cycleText=care.cycle+'일 주기'+(dur>1?' · '+dur+'일간 진행':'');
     var lastText=care.lastDone?'마지막: '+care.lastDone:'마지막: -';
@@ -569,6 +668,7 @@ function saveCare(){
   var p;if(id){data.id=id;p=apiWrite('updateCare',data)}else{p=apiWrite('addCare',data)}
   p.then(function(){showToast(id?'케어가 수정되었습니다.':'케어가 추가되었습니다.');closeForm('careFormOverlay');loadCares()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('careFormOverlay',false)});
 }
+function setCareFilter(tag){careFilterTag=tag;renderCares()}
 function removeCare(id){if(!confirm('이 케어 항목을 삭제하시겠습니까?'))return;apiWrite('deleteCare',null,id).then(function(){showToast('삭제되었습니다.');loadCares()}).catch(function(e){showToast('오류: '+e.message)})}
 function markCareDone(id){
   var care=caresCache.find(function(c){return c.id===id});if(!care)return;
