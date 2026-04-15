@@ -226,6 +226,8 @@
     <div class="header-left"><h1><span>한얼</span> 스케줄</h1></div>
     <div class="header-right">
       <button class="icon-btn" id="themeToggle" onclick="toggleTheme()" title="테마 전환"><span id="themeIcon">☀</span></button>
+      <a class="icon-btn" href="https://docs.google.com/spreadsheets/d/1hMfhClmRJ5edl-fmtwWytk5B8eFWMyvsKx8WkbSIqiE/edit" target="_blank" title="구글 시트" style="text-decoration:none"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><line x1="2" y1="6" x2="14" y2="6"/><line x1="2" y1="10" x2="14" y2="10"/><line x1="6" y1="2" x2="6" y2="14"/></svg></a>
+      <a class="icon-btn" href="https://github.com/HanEool/schedule" target="_blank" title="GitHub" style="text-decoration:none"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <button class="sync-btn" id="syncBtn" onclick="syncCalendar()">동기화</button>
     </div>
   </header>
@@ -284,6 +286,8 @@
       <div class="form-group"><label>시작일 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineStartDate"></div>
       <div class="form-group"><label>기한 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="date" id="routineEndDate"></div>
     </div>
+    <div class="form-group"><label>주소 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineAddress" placeholder="예: 서대문구 신촌로 00"></div>
+    <div class="form-group"><label>메모 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineMemo" placeholder="메모"></div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeForm('routineFormOverlay')">취소</button>
       <button class="btn btn-primary" onclick="saveRoutine()">저장</button>
@@ -301,6 +305,8 @@
       <div class="form-group"><label>시작</label><input type="time" id="eventStart"></div>
       <div class="form-group"><label>종료</label><input type="time" id="eventEnd"></div>
     </div>
+    <div class="form-group"><label>주소 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="eventAddress" placeholder="예: 강남구 테헤란로 00"></div>
+    <div class="form-group"><label>메모 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="eventMemo" placeholder="메모"></div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeForm('eventFormOverlay')">취소</button>
       <button class="btn btn-primary" onclick="saveEvent()">저장</button>
@@ -387,7 +393,8 @@ function renderRoutines(){
     var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
     var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
     var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
-    return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div><div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div><div class="day-chips">'+chips+'</div></div>';
+    var extra='';if(r.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+r.address+'</div>';if(r.memo)extra+='<div class="card-meta" style="margin-top:4px">'+r.memo+'</div>';
+    return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div><div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div></div>';
   }).join('');
 }
 function openRoutineForm(r){
@@ -398,6 +405,8 @@ function openRoutineForm(r){
   document.getElementById('routineEnd').value=r?r.endTime:'';
   document.getElementById('routineStartDate').value=r?r.startDate:'';
   document.getElementById('routineEndDate').value=r?r.endDate:'';
+  document.getElementById('routineAddress').value=r?r.address:'';
+  document.getElementById('routineMemo').value=r?r.memo:'';
   var ad=r?r.dayOfWeek.split(',').map(function(d){return d.trim()}):[];
   document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',ad.includes(b.dataset.day))});
   document.getElementById('routineFormOverlay').classList.add('open');
@@ -410,7 +419,7 @@ function saveRoutine(){
   var sd=[];document.querySelectorAll('#daySelector .day-toggle.selected').forEach(function(b){sd.push(b.dataset.day)});
   if(!title||!st||!et||!sd.length){showToast('모든 항목을 입력해주세요.');return}
   isSaving=true;setSaveBtn('routineFormOverlay',true);
-  var data={title:title,startTime:st,endTime:et,dayOfWeek:sd.join(','),startDate:document.getElementById('routineStartDate').value||'',endDate:document.getElementById('routineEndDate').value||''};
+  var data={title:title,startTime:st,endTime:et,dayOfWeek:sd.join(','),startDate:document.getElementById('routineStartDate').value||'',endDate:document.getElementById('routineEndDate').value||'',address:document.getElementById('routineAddress').value||'',memo:document.getElementById('routineMemo').value||''};
   var p;if(id){data.id=id;p=apiWrite('updateRoutine',data)}else{p=apiWrite('addRoutine',data)}
   p.then(function(){showToast(id?'루틴이 수정되었습니다.':'루틴이 추가되었습니다.');closeForm('routineFormOverlay');loadRoutines()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('routineFormOverlay',false)});
 }
@@ -430,7 +439,8 @@ function renderEvents(){
     var bc='badge-event',bt='일정';
     if(e.status==='cancelled'){bc='badge-cancelled';bt='취소'}else if(e.status==='modified'){bc='badge-modified';bt='변경'}else if(e.routineId){bc='badge-modified';bt='예외'}
     var dn=DAY_NAMES[new Date(e.date+'T00:00:00').getDay()];
-    return '<div class="card"><div class="card-header"><span class="card-title">'+(e.status==='cancelled'?'<s>'+e.title+'</s>':e.title)+'</span><div class="card-actions">'+(e.status!=='cancelled'?'<button class="btn-sm" onclick="editEvent(\''+e.id+'\')">수정</button>':'')+'<button class="btn-sm danger" onclick="removeEvent(\''+e.id+'\')">삭제</button></div></div><div class="card-meta">'+e.date+' ('+dn+') · '+e.startTime+' – '+e.endTime+' <span class="badge '+bc+'">'+bt+'</span>'+(e.source==='calendar'?' <span class="via-cal">via 캘린더</span>':'')+'</div></div>';
+    var extra='';if(e.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+e.address+'</div>';if(e.memo)extra+='<div class="card-meta" style="margin-top:4px">'+e.memo+'</div>';
+    return '<div class="card"><div class="card-header"><span class="card-title">'+(e.status==='cancelled'?'<s>'+e.title+'</s>':e.title)+'</span><div class="card-actions">'+(e.status!=='cancelled'?'<button class="btn-sm" onclick="editEvent(\''+e.id+'\')">수정</button>':'')+'<button class="btn-sm danger" onclick="removeEvent(\''+e.id+'\')">삭제</button></div></div><div class="card-meta">'+e.date+' ('+dn+') · '+e.startTime+' – '+e.endTime+' <span class="badge '+bc+'">'+bt+'</span>'+(e.source==='calendar'?' <span class="via-cal">via 캘린더</span>':'')+'</div>'+extra+'</div>';
   }).join('');
 }
 function openEventForm(ev){
@@ -440,6 +450,8 @@ function openEventForm(ev){
   document.getElementById('eventDate').value=ev?ev.date:formatDate(new Date());
   document.getElementById('eventStart').value=ev?ev.startTime:'';
   document.getElementById('eventEnd').value=ev?ev.endTime:'';
+  document.getElementById('eventAddress').value=ev?ev.address:'';
+  document.getElementById('eventMemo').value=ev?ev.memo:'';
   document.getElementById('eventFormOverlay').classList.add('open');
 }
 function editEvent(id){var e=eventsCache.find(function(e){return e.id===id});if(e)openEventForm(e)}
@@ -449,7 +461,7 @@ function saveEvent(){
     date=document.getElementById('eventDate').value,st=document.getElementById('eventStart').value,et=document.getElementById('eventEnd').value;
   if(!title||!date||!st||!et){showToast('모든 항목을 입력해주세요.');return}
   isSaving=true;setSaveBtn('eventFormOverlay',true);
-  var data={title:title,date:date,startTime:st,endTime:et};
+  var data={title:title,date:date,startTime:st,endTime:et,address:document.getElementById('eventAddress').value||'',memo:document.getElementById('eventMemo').value||''};
   var p;
   if(id){data.id=id;var ex=eventsCache.find(function(e){return e.id===id});data.source=ex?ex.source:'sheets';data.routineId=ex?ex.routineId:'';data.status=ex?ex.status:'active';p=apiWrite('updateEvent',data)}
   else{p=apiWrite('addEvent',data)}
