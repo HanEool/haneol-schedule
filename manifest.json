@@ -3,7 +3,7 @@
   "short_name": "스케줄",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f4f1ed",
+  "background_color": "transparent",
   "theme_color": "#9b8abf",
   "icons": [
     {
