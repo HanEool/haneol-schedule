@@ -438,8 +438,28 @@ function deleteCare(id) {
 
 function createRecurringCalendarEvent(data, routineId) {
   const cal = CalendarApp.getCalendarById(CALENDAR_ID_ROUTINE);
+
+  // 간격 루틴 처리
+  if (data.dayOfWeek.indexOf('간격:') === 0) {
+    const interval = parseInt(data.dayOfWeek.split(':')[1]) || 1;
+    const baseDate = new Date(data.startDate + 'T00:00:00');
+    const startParts = data.startTime.split(':');
+    const endParts = data.endTime.split(':');
+
+    const eventStart = new Date(baseDate);
+    eventStart.setHours(parseInt(startParts[0]), parseInt(startParts[1]), 0);
+    const eventEnd = new Date(baseDate);
+    eventEnd.setHours(parseInt(endParts[0]), parseInt(endParts[1]), 0);
+
+    const dailyRule = CalendarApp.newRecurrence().addDailyRule().interval(interval);
+    const event = cal.createEventSeries(
+      data.title, eventStart, eventEnd, dailyRule,
+      { description: 'routineId:' + routineId }
+    );
+    return event.getId();
+  }
+
   const days = data.dayOfWeek.split(',').map(d => d.trim());
-  const rruleDays = days.map(d => RRULE_DAY[d]).join(',');
 
   // 시작일이 설정되어 있으면 해당 날짜 사용, 없으면 다음 해당 요일
   let baseDate;
@@ -798,6 +818,32 @@ function getWeekView(dateStr) {
 
   // 루틴 → 요일별 매핑
   routines.forEach(routine => {
+    // 간격 루틴 처리
+    if (routine.dayOfWeek.indexOf('간격:') === 0) {
+      const interval = parseInt(routine.dayOfWeek.split(':')[1]) || 1;
+      if (!routine.startDate) return;
+      const rStart = new Date(routine.startDate + 'T00:00:00');
+
+      weekDays.forEach(dateStr => {
+        if (dateStr < routine.startDate) return;
+        const current = new Date(dateStr + 'T00:00:00');
+        const diffDays = Math.round((current - rStart) / (1000 * 60 * 60 * 24));
+        if (diffDays % interval !== 0) return;
+
+        const exception = events.find(e => e.routineId === routine.id && e.date === dateStr);
+        if (exception) {
+          weekItems.push({ ...exception, isException: true, originalRoutine: routine });
+        } else {
+          weekItems.push({
+            id: routine.id + '_' + dateStr, title: routine.title, date: dateStr,
+            startTime: routine.startTime, endTime: routine.endTime,
+            status: 'active', routineId: routine.id, isRoutine: true
+          });
+        }
+      });
+      return;
+    }
+
     const days = routine.dayOfWeek.split(',').map(d => d.trim());
     days.forEach(day => {
       const dayIndex = DAY_MAP[day];

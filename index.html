@@ -309,6 +309,7 @@
     <div class="mode-toggle">
       <button class="mode-btn active" id="modeWeekly" onclick="setRoutineMode('weekly')">요일 반복</button>
       <button class="mode-btn" id="modeConsecutive" onclick="setRoutineMode('consecutive')">연속 반복</button>
+      <button class="mode-btn" id="modeInterval" onclick="setRoutineMode('interval')">N일 간격</button>
     </div>
     <div id="weeklyFields" class="weekly-fields">
       <div class="form-group">
@@ -337,6 +338,10 @@
     <div id="consecutiveFields" class="consecutive-fields">
       <div class="form-group"><label>시작일</label><input type="date" id="routineConsecStart"></div>
       <div class="form-group"><label>연속일수</label><input type="number" id="routineConsecDays" placeholder="10" min="1"></div>
+    </div>
+    <div id="intervalFields" class="consecutive-fields">
+      <div class="form-group"><label>시작일</label><input type="date" id="routineIntervalStart"></div>
+      <div class="form-group"><label>간격 (일)</label><input type="number" id="routineIntervalDays" placeholder="15" min="2"></div>
     </div>
     <div class="form-group"><label>주소 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineAddress" placeholder="예: 서대문구 신촌로 00"></div>
     <div class="form-group"><label>메모 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="routineMemo" placeholder="메모"></div>
@@ -458,11 +463,16 @@ function setRoutineMode(mode){
   routineMode=mode;
   document.getElementById('modeWeekly').classList.toggle('active',mode==='weekly');
   document.getElementById('modeConsecutive').classList.toggle('active',mode==='consecutive');
-  var wf=document.querySelectorAll('.weekly-fields'),cf=document.getElementById('consecutiveFields');
-  wf.forEach(function(el){el.classList.toggle('hide',mode==='consecutive')});
+  document.getElementById('modeInterval').classList.toggle('active',mode==='interval');
+  var wf=document.querySelectorAll('.weekly-fields'),cf=document.getElementById('consecutiveFields'),inf=document.getElementById('intervalFields');
+  wf.forEach(function(el){el.classList.toggle('hide',mode!=='weekly')});
   cf.classList.toggle('show',mode==='consecutive');
+  inf.classList.toggle('show',mode==='interval');
 }
+function isIntervalRoutine(r){return r.dayOfWeek&&r.dayOfWeek.indexOf('간격:')=== 0}
+function getIntervalDays(r){return parseInt(r.dayOfWeek.split(':')[1])||1}
 function isConsecutiveRoutine(r){
+  if(isIntervalRoutine(r))return false;
   var allDays='월,화,수,목,금,토,일';
   var days=r.dayOfWeek.split(',').map(function(d){return d.trim()}).sort().join(',');
   var sorted=allDays.split(',').sort().join(',');
@@ -482,21 +492,24 @@ function renderRoutines(){
   if(!routinesCache.length){c.innerHTML='<div class="empty-state">등록된 루틴이 없습니다.</div>';return}
   var all=['월','화','수','목','금','토','일'];
   c.innerHTML=routinesCache.map(function(r){
-    var isCon=isConsecutiveRoutine(r);
+    var isInt=isIntervalRoutine(r),isCon=isConsecutiveRoutine(r);
     var extra='';if(r.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+r.address+'</div>';if(r.memo)extra+='<div class="card-meta" style="margin-top:4px">'+r.memo+'</div>';
-    var bottomHtml;
+    var actions='<div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div>';
+    var header='<div class="card-header"><span class="card-title">'+r.title+'</span>'+actions+'</div>';
+    if(isInt){
+      var intDays=getIntervalDays(r);
+      var startText=r.startDate?r.startDate+' ~':'';
+      return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">'+intDays+'일 간격'+(startText?' ('+startText+')':'')+'</div></div>';
+    }
     if(isCon){
       var n=getConsecutiveDays(r);
-      bottomHtml='<div class="consecutive-badge">연속 '+n+'일 ('+r.startDate+' ~ '+r.endDate+')</div>';
-    }else{
-      var ad=r.dayOfWeek.split(',').map(function(d){return d.trim()});
-      var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
-      var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
-      var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
-      bottomHtml='<div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div>';
-      return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div>'+bottomHtml+'</div>';
+      return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">연속 '+n+'일 ('+r.startDate+' ~ '+r.endDate+')</div></div>';
     }
-    return '<div class="card"><div class="card-header"><span class="card-title">'+r.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div></div><div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+bottomHtml+'</div>';
+    var ad=r.dayOfWeek.split(',').map(function(d){return d.trim()});
+    var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
+    var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
+    var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
+    return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div></div>';
   }).join('');
 }
 function openRoutineForm(r){
@@ -507,19 +520,25 @@ function openRoutineForm(r){
   document.getElementById('routineEnd').value=r?r.endTime:'';
   document.getElementById('routineAddress').value=r?r.address:'';
   document.getElementById('routineMemo').value=r?r.memo:'';
-  if(r&&isConsecutiveRoutine(r)){
+  document.getElementById('routineConsecStart').value='';
+  document.getElementById('routineConsecDays').value='';
+  document.getElementById('routineIntervalStart').value='';
+  document.getElementById('routineIntervalDays').value='';
+  document.getElementById('routineStartDate').value='';
+  document.getElementById('routineEndDate').value='';
+  document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.remove('selected')});
+  if(r&&isIntervalRoutine(r)){
+    setRoutineMode('interval');
+    document.getElementById('routineIntervalStart').value=r.startDate;
+    document.getElementById('routineIntervalDays').value=getIntervalDays(r);
+  }else if(r&&isConsecutiveRoutine(r)){
     setRoutineMode('consecutive');
     document.getElementById('routineConsecStart').value=r.startDate;
     document.getElementById('routineConsecDays').value=getConsecutiveDays(r);
-    document.getElementById('routineStartDate').value='';
-    document.getElementById('routineEndDate').value='';
-    document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.remove('selected')});
   }else{
     setRoutineMode('weekly');
     document.getElementById('routineStartDate').value=r?r.startDate:'';
     document.getElementById('routineEndDate').value=r?r.endDate:'';
-    document.getElementById('routineConsecStart').value='';
-    document.getElementById('routineConsecDays').value='';
     var ad=r?r.dayOfWeek.split(',').map(function(d){return d.trim()}):[];
     document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',ad.includes(b.dataset.day))});
   }
@@ -531,7 +550,13 @@ function saveRoutine(){
   var id=document.getElementById('routineEditId').value,title=document.getElementById('routineTitle').value.trim(),
     st=document.getElementById('routineStart').value,et=document.getElementById('routineEnd').value;
   var dayOfWeek,startDate,endDate;
-  if(routineMode==='consecutive'){
+  if(routineMode==='interval'){
+    var intStart=document.getElementById('routineIntervalStart').value,intDays=parseInt(document.getElementById('routineIntervalDays').value);
+    if(!title||!st||!et||!intStart||!intDays){showToast('모든 항목을 입력해주세요.');return}
+    dayOfWeek='간격:'+intDays;
+    startDate=intStart;
+    endDate='';
+  }else if(routineMode==='consecutive'){
     var consecStart=document.getElementById('routineConsecStart').value,consecDays=parseInt(document.getElementById('routineConsecDays').value);
     if(!title||!st||!et||!consecStart||!consecDays){showToast('모든 항목을 입력해주세요.');return}
     dayOfWeek='월,화,수,목,금,토,일';
