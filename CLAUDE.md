@@ -17,8 +17,8 @@ GitHub Pages (index.html)  ←→  Google Apps Script (API)  ←→  Google Shee
 
 - **스프레드시트 ID**: `1hMfhClmRJ5edl-fmtwWytk5B8eFWMyvsKx8WkbSIqiE`
 - **Apps Script 웹앱 URL**: `https://script.google.com/a/macros/somaandbody.com/s/AKfycbz23iMsMa7QiETq50kVDTj8KUtRoSzBqsZZhkDCqC7ZZmlyFjv5IqJ6E_KAKyZT3IFI/exec`
-- **GitHub Pages URL**: `https://haneool.github.io/schedule/`
-- **GitHub 저장소**: `https://github.com/HanEool/schedule`
+- **GitHub Pages URL**: `https://haneool.github.io/haneol-schedule/`
+- **GitHub 저장소**: `https://github.com/HanEool/haneol-schedule`
 - **일정 캘린더 ID**: `haneol@somaandbody.com`
 - **루틴 캘린더 ID**: `c_177b6987863f353fcd46f459f0c5f7f30cd6d1bb3ee3e727fbfdf7dff2185a2d@group.calendar.google.com`
 

@@ -1,5 +1,5 @@
 {
-  "name": "_haneol-schedule",
+  "name": "haneol-schedule",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -8,16 +8,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HanEool/schedule.git"
+    "url": "git+https://github.com/HanEool/haneol-schedule.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/HanEool/schedule/issues"
+    "url": "https://github.com/HanEool/haneol-schedule/issues"
   },
-  "homepage": "https://github.com/HanEool/schedule#readme",
+  "homepage": "https://github.com/HanEool/haneol-schedule#readme",
   "dependencies": {
     "@google/clasp": "^3.3.0"
   }
