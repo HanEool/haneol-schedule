@@ -79,6 +79,9 @@ function doGet(e) {
       case 'syncCalendar':
         result = fullSync();
         break;
+      case 'cleanupGarbage':
+        result = cleanupAllGarbageExceptions();
+        break;
       default:
         result = { error: 'Unknown action: ' + action };
     }
@@ -199,10 +202,85 @@ function updateRoutine(data) {
       sheet.getRange(row, 2, 1, 10).setValues([[
         data.title, data.dayOfWeek, data.startTime, data.endTime, newCalId, now(), data.startDate || '', data.endDate || '', data.address || '', data.memo || ''
       ]]);
+
+      // 구 루틴 시리즈에서 자동 생성된 예외들 제거
+      // (루틴 원본 변경 시 stale 예외가 주간뷰를 덮어쓰는 문제 해결)
+      cleanupStaleRoutineExceptions(data.id);
+
       return { success: true };
     }
   }
   return { error: 'Routine not found' };
+}
+
+// source='calendar', status='modified'인 예외 중 지정한 routineId에 해당하는 것들 삭제
+// 루틴 원본 변경 시 호출되어 stale 예외를 정리
+function cleanupStaleRoutineExceptions(routineId) {
+  const sheet = getSheet(SHEET_EVENT);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return 0;
+
+  const data = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 12).getValues();
+  let deleted = 0;
+  // 뒤에서부터 순회해야 deleteRow 후 인덱스가 꼬이지 않음
+  for (let i = data.length - 1; i >= 0; i--) {
+    const row = data[i];
+    if (row[0] && row[8] === routineId && row[7] === 'calendar' && row[9] === 'modified') {
+      sheet.deleteRow(DATA_START_ROW + i);
+      deleted++;
+    }
+  }
+  return deleted;
+}
+
+// 이벤트 시트 전체를 스캔해서 자동 생성된 garbage 예외 정리
+// 1) 고아 예외 (routineId가 존재하지 않는 루틴 참조)
+// 2) 오래된 시리즈 참조 (calendarEventId가 현재 루틴의 calId와 다름)
+// 3) 현재 루틴 원본과 시간/제목이 완전히 동일한 예외 (진짜 변경이 아닌 자동 생성 garbage)
+function cleanupAllGarbageExceptions() {
+  const routines = getRoutines();
+  const routineMap = {};
+  routines.forEach(r => { routineMap[r.id] = r; });
+
+  const sheet = getSheet(SHEET_EVENT);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return { deleted: 0 };
+
+  const data = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 12).getValues();
+  let deleted = 0;
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    const row = data[i];
+    if (!row[0]) continue;
+    // source='calendar' AND status='modified' AND routineId 있음
+    if (row[7] !== 'calendar' || row[9] !== 'modified' || !row[8]) continue;
+
+    const routine = routineMap[row[8]];
+
+    // 1) 고아: 루틴이 사라짐
+    if (!routine) {
+      sheet.deleteRow(DATA_START_ROW + i);
+      deleted++;
+      continue;
+    }
+
+    // 2) stale: calendarEventId가 현재 루틴의 calId와 다름 (구 시리즈 참조)
+    if (row[5] !== routine.calendarEventId) {
+      sheet.deleteRow(DATA_START_ROW + i);
+      deleted++;
+      continue;
+    }
+
+    // 3) 원본과 동일: 자동 생성된 garbage
+    const startTime = formatTime(row[3]);
+    const endTime = formatTime(row[4]);
+    if (row[1] === routine.title && startTime === routine.startTime && endTime === routine.endTime) {
+      sheet.deleteRow(DATA_START_ROW + i);
+      deleted++;
+    }
+  }
+
+  return { deleted: deleted };
 }
 
 function deleteRoutine(id) {
@@ -669,13 +747,21 @@ function syncRoutineCalendarToSheet(calendarId, since) {
   const eventSheet = getSheet(SHEET_EVENT);
   const routineSheet = getSheet(SHEET_ROUTINE);
 
-  // 루틴 매핑: calendarEventId → routineId
+  // 루틴 매핑: calEventId → { id, title, startTime, endTime }
+  // (예외 감지 시 원본과 비교하기 위해 전체 정보 보관)
   const routineLastRow = routineSheet.getLastRow();
   let routineMap = {};
   if (routineLastRow >= DATA_START_ROW) {
     const routineData = routineSheet.getRange(DATA_START_ROW, 1, routineLastRow - DATA_START_ROW + 1, 7).getValues();
     routineData.forEach(row => {
-      if (row[5]) routineMap[row[5]] = row[0]; // calEventId → routineId
+      if (row[5]) {
+        routineMap[row[5]] = {
+          id: row[0],
+          title: row[1],
+          startTime: formatTime(row[3]),
+          endTime: formatTime(row[4])
+        };
+      }
     });
   }
 
@@ -697,18 +783,27 @@ function syncRoutineCalendarToSheet(calendarId, since) {
     // recurring event의 개별 인스턴스 변경 감지
     if (routineIdMatch || event.isRecurringEvent()) {
       const parentId = event.isRecurringEvent() ? event.getId() : null;
-      const routineId = routineIdMatch ? routineIdMatch[1] : (routineMap[parentId] || '');
+      const routineInfo = routineIdMatch ? null : routineMap[parentId];
+      const routineId = routineIdMatch ? routineIdMatch[1] : (routineInfo ? routineInfo.id : '');
 
       // 이미 일정시트에 있는지 확인
       if (!existingCalIds[eventId] && routineId) {
-        // 이 인스턴스가 원래 루틴과 다른지 확인 (예외 감지)
         const eventStart = event.getStartTime();
         const eventEnd = event.getEndTime();
         const dateStr = Utilities.formatDate(eventStart, 'Asia/Seoul', 'yyyy-MM-dd');
         const startTimeStr = Utilities.formatDate(eventStart, 'Asia/Seoul', 'HH:mm');
         const endTimeStr = Utilities.formatDate(eventEnd, 'Asia/Seoul', 'HH:mm');
 
-        // 루틴 원본과 시간이 다르면 예외로 기록
+        // 루틴 원본과 제목/시간이 모두 일치하면 "진짜 예외"가 아니므로 skip
+        // (이전 버그: 모든 반복 인스턴스를 modified 예외로 기록했던 문제 수정)
+        if (routineInfo &&
+            event.getTitle() === routineInfo.title &&
+            startTimeStr === routineInfo.startTime &&
+            endTimeStr === routineInfo.endTime) {
+          return;
+        }
+
+        // 원본과 다른 인스턴스만 예외로 기록
         const id = generateId('event');
         eventSheet.appendRow([
           id, event.getTitle(), dateStr, startTimeStr, endTimeStr,
