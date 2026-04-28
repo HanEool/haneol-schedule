@@ -11,6 +11,7 @@ const CALENDAR_ID_ROUTINE = 'c_177b6987863f353fcd46f459f0c5f7f30cd6d1bb3ee3e727f
 const SHEET_ROUTINE = '루틴';
 const SHEET_EVENT = '일정';
 const SHEET_CARE = '케어';
+const SHEET_TASTE = '취향';
 const DATA_START_ROW = 4; // Row1=시스템, Row2=공백, Row3=헤더, Row4~=데이터
 
 // ============================================================
@@ -81,6 +82,18 @@ function doGet(e) {
         break;
       case 'cleanupGarbage':
         result = cleanupAllGarbageExceptions();
+        break;
+      case 'getTastes':
+        result = getTastes();
+        break;
+      case 'addTaste':
+        result = addTaste(data);
+        break;
+      case 'updateTaste':
+        result = updateTaste(data);
+        break;
+      case 'deleteTaste':
+        result = deleteTaste(id);
         break;
       default:
         result = { error: 'Unknown action: ' + action };
@@ -508,6 +521,97 @@ function deleteCare(id) {
     }
   }
   return { error: 'Care not found' };
+}
+
+// ============================================================
+// 취향 CRUD (영화/음악/전시/책 등)
+// ============================================================
+
+// 취향 시트가 없으면 자동 생성 (헤더 포함)
+function ensureTasteSheet() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_TASTE);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_TASTE);
+    sheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 취향');
+    sheet.getRange(3, 1, 1, 7).setValues([[
+      '아이디', '카테고리', '제목', '부가정보', '별점', '메모', '추가일시'
+    ]]);
+  }
+  return sheet;
+}
+
+function getTastes() {
+  const sheet = ensureTasteSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return [];
+
+  const data = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 7).getValues();
+  return data.filter(row => row[0] !== '').map(row => ({
+    id: row[0],
+    category: row[1] || '',
+    title: row[2] || '',
+    subtitle: row[3] || '',
+    rating: row[4] ? parseInt(row[4]) : 0,
+    memo: row[5] || '',
+    addedAt: row[6] ? formatDateVal(row[6]) : ''
+  }));
+}
+
+function addTaste(data) {
+  const sheet = ensureTasteSheet();
+  const id = generateId('taste');
+  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+
+  sheet.appendRow([
+    id,
+    data.category || '기타',
+    data.title || '',
+    data.subtitle || '',
+    data.rating ? parseInt(data.rating) : '',
+    data.memo || '',
+    today
+  ]);
+
+  return { success: true, id: id };
+}
+
+function updateTaste(data) {
+  const sheet = ensureTasteSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return { error: 'No data' };
+
+  const ids = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === data.id) {
+      const row = DATA_START_ROW + i;
+      // 추가일시(7열)는 그대로 두고 나머지만 업데이트
+      sheet.getRange(row, 2, 1, 5).setValues([[
+        data.category || '기타',
+        data.title || '',
+        data.subtitle || '',
+        data.rating ? parseInt(data.rating) : '',
+        data.memo || ''
+      ]]);
+      return { success: true };
+    }
+  }
+  return { error: 'Taste not found' };
+}
+
+function deleteTaste(id) {
+  const sheet = ensureTasteSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return { error: 'No data' };
+
+  const ids = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) {
+      sheet.deleteRow(DATA_START_ROW + i);
+      return { success: true };
+    }
+  }
+  return { error: 'Taste not found' };
 }
 
 // ============================================================
@@ -1058,6 +1162,16 @@ function initializeSheets() {
   careSheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 케어');
   careSheet.getRange(3, 1, 1, 8).setValues([[
     '아이디', '이름', '주기(일)', '소요기간(일)', '마지막완료일', '예정일', '키워드', '메모'
+  ]]);
+
+  // 취향 시트
+  let tasteSheet = ss.getSheetByName(SHEET_TASTE);
+  if (!tasteSheet) {
+    tasteSheet = ss.insertSheet(SHEET_TASTE);
+  }
+  tasteSheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 취향');
+  tasteSheet.getRange(3, 1, 1, 7).setValues([[
+    '아이디', '카테고리', '제목', '부가정보', '별점', '메모', '추가일시'
   ]]);
 
   return { success: true, message: '시트 초기화 완료' };

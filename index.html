@@ -144,6 +144,20 @@
   .care-progress-bar.soon{background:var(--gold)}
   .care-progress-bar.overdue{background:var(--rose)}
 
+  .taste-group{margin-bottom:20px}
+  .taste-group-header{
+    font-family:'Nanum Myeongjo',serif;font-size:15px;font-weight:600;
+    color:var(--text);letter-spacing:-.01em;
+    padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:10px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .taste-count{
+    font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:400;
+    color:var(--text-faint);background:var(--surface2);
+    padding:1px 7px;border-radius:8px;
+  }
+  .taste-rating{margin-left:8px;color:var(--gold);font-size:12px;letter-spacing:1px}
+
   .day-chips{display:flex;gap:5px;margin-top:10px}
   .day-chip{
     width:28px;height:28px;display:flex;align-items:center;justify-content:center;
@@ -274,6 +288,7 @@
     <button class="tab" data-tab="routine" onclick="switchTab('routine')">루틴</button>
     <button class="tab" data-tab="event" onclick="switchTab('event')">일정</button>
     <button class="tab" data-tab="care" onclick="switchTab('care')">케어</button>
+    <button class="tab" data-tab="taste" onclick="switchTab('taste')">취향</button>
   </div>
 
   <div class="tab-panel active" id="panel-week">
@@ -297,6 +312,8 @@
   </div>
 
   <div class="tab-panel" id="panel-care"><div id="careList"></div></div>
+
+  <div class="tab-panel" id="panel-taste"><div id="tasteList"></div></div>
 
   <button class="add-fab" onclick="openAddForm()">+</button>
 </div>
@@ -393,13 +410,50 @@
   </div>
 </div>
 
+<div class="form-overlay" id="tasteFormOverlay">
+  <div class="form-panel">
+    <div class="form-title" id="tasteFormTitle">취향 추가</div>
+    <input type="hidden" id="tasteEditId">
+    <div class="form-group">
+      <label>카테고리</label>
+      <div class="day-selector" id="tasteCategorySelector">
+        <button class="day-toggle" data-cat="영화" onclick="setTasteCategory('영화')">영화</button>
+        <button class="day-toggle" data-cat="음악" onclick="setTasteCategory('음악')">음악</button>
+        <button class="day-toggle" data-cat="전시" onclick="setTasteCategory('전시')">전시</button>
+        <button class="day-toggle" data-cat="책" onclick="setTasteCategory('책')">책</button>
+        <button class="day-toggle" data-cat="기타" onclick="setTasteCategory('기타')">기타</button>
+      </div>
+      <input type="text" id="tasteCategory" placeholder="직접 입력도 가능" style="margin-top:6px">
+    </div>
+    <div class="form-group"><label>제목</label><input type="text" id="tasteTitle" placeholder="작품/장소명"></div>
+    <div class="form-group"><label>부가정보 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="tasteSubtitle" placeholder="감독/아티스트/저자/장소"></div>
+    <div class="form-group">
+      <label>별점 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label>
+      <div class="day-selector" id="tasteRatingSelector">
+        <button class="day-toggle" data-rating="0" onclick="setTasteRating(0)">-</button>
+        <button class="day-toggle" data-rating="1" onclick="setTasteRating(1)">★</button>
+        <button class="day-toggle" data-rating="2" onclick="setTasteRating(2)">★★</button>
+        <button class="day-toggle" data-rating="3" onclick="setTasteRating(3)">★★★</button>
+        <button class="day-toggle" data-rating="4" onclick="setTasteRating(4)">★★★★</button>
+        <button class="day-toggle" data-rating="5" onclick="setTasteRating(5)">★★★★★</button>
+      </div>
+    </div>
+    <div class="form-group"><label>메모 <span style="color:var(--text-faint);font-weight:400">(선택)</span></label><input type="text" id="tasteMemo" placeholder="감상, 인상적인 부분 등"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeForm('tasteFormOverlay')">취소</button>
+      <button class="btn btn-primary" onclick="saveTaste()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="form-overlay" id="addChoiceOverlay">
   <div class="form-panel" style="padding-bottom:calc(36px + env(safe-area-inset-bottom))">
     <div class="form-title">무엇을 추가할까요?</div>
-    <div class="form-actions" style="margin-top:0;gap:6px">
+    <div class="form-actions" style="margin-top:0;gap:6px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="closeForm('addChoiceOverlay');openRoutineForm()">루틴</button>
       <button class="btn btn-secondary" onclick="closeForm('addChoiceOverlay');openEventForm()">일정</button>
-      <button class="btn btn-primary" onclick="closeForm('addChoiceOverlay');openCareForm()">케어</button>
+      <button class="btn btn-secondary" onclick="closeForm('addChoiceOverlay');openCareForm()">케어</button>
+      <button class="btn btn-primary" onclick="closeForm('addChoiceOverlay');openTasteForm()">취향</button>
     </div>
   </div>
 </div>
@@ -408,7 +462,7 @@
 
 <script>
 var API_URL='https://script.google.com/a/macros/somaandbody.com/s/AKfycbz23iMsMa7QiETq50kVDTj8KUtRoSzBqsZZhkDCqC7ZZmlyFjv5IqJ6E_KAKyZT3IFI/exec';
-var currentWeekDate=new Date(),currentEventMonth=new Date(),routinesCache=[],eventsCache=[],caresCache=[],isSaving=false,routineMode='weekly',careFilterTag='';
+var currentWeekDate=new Date(),currentEventMonth=new Date(),routinesCache=[],eventsCache=[],caresCache=[],tastesCache=[],isSaving=false,routineMode='weekly',careFilterTag='',tasteFilterCat='',tasteRating=0;
 
 function toggleTheme(){
   var h=document.documentElement,n=h.getAttribute('data-theme')==='bright'?'dark':'bright';
@@ -423,7 +477,7 @@ function apiWrite(action,data,id){var p={action:action};if(data)p.data=JSON.stri
 
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2500)}
 
-function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===n)});document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.toggle('active',p.id==='panel-'+n)});if(n==='week')loadWeekView();else if(n==='routine')loadRoutines();else if(n==='event')loadEvents();else if(n==='care')loadCares()}
+function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===n)});document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.toggle('active',p.id==='panel-'+n)});if(n==='week')loadWeekView();else if(n==='routine')loadRoutines();else if(n==='event')loadEvents();else if(n==='care')loadCares();else if(n==='taste')loadTastes()}
 
 var DAY_NAMES=['일','월','화','수','목','금','토'];
 function getMonday(d){var dt=new Date(d);dt.setDate(dt.getDate()-((dt.getDay()+6)%7));return dt}
@@ -707,6 +761,80 @@ function markCareDone(id){
   var data={id:care.id,title:care.title,cycle:care.cycle,duration:care.duration,lastDone:formatDate(new Date()),nextDate:care.nextDate||'',keywords:care.keywords||'',memo:care.memo||''};
   apiWrite('updateCare',data).then(function(){showToast('완료 기록됨');loadCares()}).catch(function(e){showToast('오류: '+e.message)});
 }
+
+function loadTastes(){
+  var c=document.getElementById('tasteList');c.innerHTML='<div class="loading">불러오는 중...</div>';
+  apiGet({action:'getTastes'}).then(function(d){tastesCache=d;renderTastes()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+}
+function renderTastes(){
+  var c=document.getElementById('tasteList');
+  if(!tastesCache.length){c.innerHTML='<div class="empty-state">등록된 취향이 없습니다. 영화, 음악, 전시 등을 추가해보세요.</div>';return}
+  // 카테고리 목록 수집
+  var cats=[];
+  tastesCache.forEach(function(t){if(t.category&&cats.indexOf(t.category)===-1)cats.push(t.category)});
+  // 정해진 순서대로 정렬, 없는 건 끝에
+  var order=['영화','음악','전시','책','기타'];
+  cats.sort(function(a,b){var ia=order.indexOf(a),ib=order.indexOf(b);if(ia===-1&&ib===-1)return a.localeCompare(b);if(ia===-1)return 1;if(ib===-1)return -1;return ia-ib});
+  // 필터 chip
+  var chipHtml='<div class="tag-filter"><button class="tag-chip'+(tasteFilterCat===''?' active':'')+'" onclick="setTasteFilter(\'\')">전체</button>';
+  cats.forEach(function(t){chipHtml+='<button class="tag-chip'+(tasteFilterCat===t?' active':'')+'" onclick="setTasteFilter(\''+t+'\')">'+t+'</button>'});
+  chipHtml+='</div>';
+  // 필터 적용 후 카테고리별 그룹핑
+  var filtered=tasteFilterCat?tastesCache.filter(function(t){return t.category===tasteFilterCat}):tastesCache;
+  var groups={};
+  filtered.forEach(function(t){var k=t.category||'기타';if(!groups[k])groups[k]=[];groups[k].push(t)});
+  // 정렬: 별점 높은 순, 그 다음 추가일시 최신순
+  Object.keys(groups).forEach(function(k){
+    groups[k].sort(function(a,b){if(b.rating!==a.rating)return b.rating-a.rating;return (b.addedAt||'').localeCompare(a.addedAt||'')});
+  });
+  var renderOrder=cats.filter(function(k){return groups[k]});
+  var html=chipHtml;
+  renderOrder.forEach(function(cat){
+    html+='<div class="taste-group"><div class="taste-group-header">'+cat+' <span class="taste-count">'+groups[cat].length+'</span></div>';
+    groups[cat].forEach(function(t){
+      var stars=t.rating?'<span class="taste-rating">'+'★'.repeat(t.rating)+'</span>':'';
+      var sub=t.subtitle?'<div class="card-meta" style="margin-top:4px">'+t.subtitle+'</div>':'';
+      var memo=t.memo?'<div class="card-meta" style="margin-top:4px;color:var(--text-faint)">'+t.memo+'</div>':'';
+      var added=t.addedAt?'<div class="card-meta" style="margin-top:4px;color:var(--text-faint);font-size:11px">추가: '+t.addedAt+'</div>':'';
+      html+='<div class="card"><div class="card-header"><span class="card-title">'+t.title+stars+'</span><div class="card-actions"><button class="btn-sm" onclick="editTaste(\''+t.id+'\')">수정</button><button class="btn-sm danger" onclick="removeTaste(\''+t.id+'\')">삭제</button></div></div>'+sub+memo+added+'</div>';
+    });
+    html+='</div>';
+  });
+  c.innerHTML=html;
+}
+function setTasteFilter(cat){tasteFilterCat=cat;renderTastes()}
+function setTasteCategory(cat){
+  document.getElementById('tasteCategory').value=cat;
+  document.querySelectorAll('#tasteCategorySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',b.dataset.cat===cat)});
+}
+function setTasteRating(r){
+  tasteRating=r;
+  document.querySelectorAll('#tasteRatingSelector .day-toggle').forEach(function(b){b.classList.toggle('selected',parseInt(b.dataset.rating)===r)});
+}
+function openTasteForm(taste){
+  document.getElementById('tasteFormTitle').textContent=taste?'취향 수정':'취향 추가';
+  document.getElementById('tasteEditId').value=taste?taste.id:'';
+  document.getElementById('tasteCategory').value=taste?taste.category:'';
+  document.getElementById('tasteTitle').value=taste?taste.title:'';
+  document.getElementById('tasteSubtitle').value=taste?taste.subtitle:'';
+  document.getElementById('tasteMemo').value=taste?taste.memo:'';
+  setTasteRating(taste?(taste.rating||0):0);
+  document.querySelectorAll('#tasteCategorySelector .day-toggle').forEach(function(b){b.classList.toggle('selected',taste&&b.dataset.cat===taste.category)});
+  document.getElementById('tasteFormOverlay').classList.add('open');
+}
+function editTaste(id){var t=tastesCache.find(function(t){return t.id===id});if(t)openTasteForm(t)}
+function saveTaste(){
+  if(isSaving)return;
+  var id=document.getElementById('tasteEditId').value,
+    category=document.getElementById('tasteCategory').value.trim()||'기타',
+    title=document.getElementById('tasteTitle').value.trim();
+  if(!title){showToast('제목을 입력해주세요.');return}
+  isSaving=true;setSaveBtn('tasteFormOverlay',true);
+  var data={category:category,title:title,subtitle:document.getElementById('tasteSubtitle').value.trim()||'',rating:tasteRating||'',memo:document.getElementById('tasteMemo').value.trim()||''};
+  var p;if(id){data.id=id;p=apiWrite('updateTaste',data)}else{p=apiWrite('addTaste',data)}
+  p.then(function(){showToast(id?'수정되었습니다.':'추가되었습니다.');closeForm('tasteFormOverlay');loadTastes()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('tasteFormOverlay',false)});
+}
+function removeTaste(id){if(!confirm('이 취향을 삭제하시겠습니까?'))return;apiWrite('deleteTaste',null,id).then(function(){showToast('삭제되었습니다.');loadTastes()}).catch(function(e){showToast('오류: '+e.message)})}
 
 function syncCalendar(){
   var b=document.getElementById('syncBtn');b.disabled=true;b.textContent='동기화 중…';
