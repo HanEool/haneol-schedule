@@ -157,6 +157,8 @@
     padding:1px 7px;border-radius:8px;
   }
   .taste-rating{margin-left:8px;color:var(--gold);font-size:12px;letter-spacing:1px}
+  .card-pending{opacity:.6;position:relative}
+  .card-pending::after{content:'동기화 중…';position:absolute;top:8px;right:8px;font-size:10px;color:var(--text-faint)}
 
   .day-chips{display:flex;gap:5px;margin-top:10px}
   .day-chip{
@@ -763,9 +765,24 @@ function markCareDone(id){
 }
 
 function loadTastes(){
-  var c=document.getElementById('tasteList');c.innerHTML='<div class="loading">불러오는 중...</div>';
-  apiGet({action:'getTastes'}).then(function(d){tastesCache=d;renderTastes()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+  var c=document.getElementById('tasteList');
+  // 캐시 있으면 즉시 렌더 (메모리 → localStorage 순)
+  if(!tastesCache.length){
+    var saved=localStorage.getItem('tastesCache');
+    if(saved){try{tastesCache=JSON.parse(saved)}catch(e){}}
+  }
+  if(tastesCache.length)renderTastes();
+  else c.innerHTML='<div class="loading">불러오는 중...</div>';
+  // 백그라운드 갱신 (실패해도 캐시 유지). pending 항목은 보존
+  apiGet({action:'getTastes'}).then(function(d){
+    var pending=tastesCache.filter(function(t){return t._pending});
+    tastesCache=d.concat(pending);
+    saveTasteCache();renderTastes();
+  }).catch(function(){
+    if(!tastesCache.length)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>';
+  });
 }
+function saveTasteCache(){try{localStorage.setItem('tastesCache',JSON.stringify(tastesCache))}catch(e){}}
 function renderTastes(){
   var c=document.getElementById('tasteList');
   if(!tastesCache.length){c.innerHTML='<div class="empty-state">등록된 취향이 없습니다. 영화, 음악, 전시 등을 추가해보세요.</div>';return}
@@ -796,7 +813,8 @@ function renderTastes(){
       var sub=t.subtitle?'<div class="card-meta" style="margin-top:4px">'+t.subtitle+'</div>':'';
       var memo=t.memo?'<div class="card-meta" style="margin-top:4px;color:var(--text-faint)">'+t.memo+'</div>':'';
       var added=t.addedAt?'<div class="card-meta" style="margin-top:4px;color:var(--text-faint);font-size:11px">추가: '+t.addedAt+'</div>':'';
-      html+='<div class="card"><div class="card-header"><span class="card-title">'+t.title+stars+'</span><div class="card-actions"><button class="btn-sm" onclick="editTaste(\''+t.id+'\')">수정</button><button class="btn-sm danger" onclick="removeTaste(\''+t.id+'\')">삭제</button></div></div>'+sub+memo+added+'</div>';
+      var pendingMark=t._pending?' card-pending':'';
+      html+='<div class="card'+pendingMark+'"><div class="card-header"><span class="card-title">'+t.title+stars+'</span><div class="card-actions"><button class="btn-sm" onclick="editTaste(\''+t.id+'\')">수정</button><button class="btn-sm danger" onclick="removeTaste(\''+t.id+'\')">삭제</button></div></div>'+sub+memo+added+'</div>';
     });
     html+='</div>';
   });
@@ -824,17 +842,55 @@ function openTasteForm(taste){
 }
 function editTaste(id){var t=tastesCache.find(function(t){return t.id===id});if(t)openTasteForm(t)}
 function saveTaste(){
-  if(isSaving)return;
   var id=document.getElementById('tasteEditId').value,
     category=document.getElementById('tasteCategory').value.trim()||'기타',
     title=document.getElementById('tasteTitle').value.trim();
   if(!title){showToast('제목을 입력해주세요.');return}
-  isSaving=true;setSaveBtn('tasteFormOverlay',true);
-  var data={category:category,title:title,subtitle:document.getElementById('tasteSubtitle').value.trim()||'',rating:tasteRating||'',memo:document.getElementById('tasteMemo').value.trim()||''};
-  var p;if(id){data.id=id;p=apiWrite('updateTaste',data)}else{p=apiWrite('addTaste',data)}
-  p.then(function(){showToast(id?'수정되었습니다.':'추가되었습니다.');closeForm('tasteFormOverlay');loadTastes()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('tasteFormOverlay',false)});
+  var data={category:category,title:title,subtitle:document.getElementById('tasteSubtitle').value.trim()||'',rating:tasteRating||0,memo:document.getElementById('tasteMemo').value.trim()||''};
+  // 낙관적 업데이트: 캐시에 즉시 반영 + 폼 닫기
+  var tempId,prevState;
+  if(id){
+    var idx=tastesCache.findIndex(function(t){return t.id===id});
+    if(idx>=0){prevState=Object.assign({},tastesCache[idx]);Object.assign(tastesCache[idx],data)}
+  } else {
+    tempId='temp_'+Date.now();
+    tastesCache.push({id:tempId,category:data.category,title:data.title,subtitle:data.subtitle,rating:data.rating,memo:data.memo,addedAt:formatDate(new Date()),_pending:true});
+  }
+  saveTasteCache();renderTastes();closeForm('tasteFormOverlay');
+  // 백그라운드 동기화
+  var apiData=Object.assign({},data,{rating:data.rating||''});
+  var p;if(id){apiData.id=id;p=apiWrite('updateTaste',apiData)}else{p=apiWrite('addTaste',apiData)}
+  p.then(function(r){
+    if(tempId&&r.id){
+      var idx=tastesCache.findIndex(function(t){return t.id===tempId});
+      if(idx>=0){tastesCache[idx].id=r.id;delete tastesCache[idx]._pending;saveTasteCache();renderTastes()}
+    }
+  }).catch(function(e){
+    // 실패 시 롤백
+    if(tempId){
+      var idx=tastesCache.findIndex(function(t){return t.id===tempId});
+      if(idx>=0)tastesCache.splice(idx,1);
+    } else if(prevState){
+      var idx=tastesCache.findIndex(function(t){return t.id===id});
+      if(idx>=0)tastesCache[idx]=prevState;
+    }
+    saveTasteCache();renderTastes();
+    showToast('저장 실패: '+e.message);
+  });
 }
-function removeTaste(id){if(!confirm('이 취향을 삭제하시겠습니까?'))return;apiWrite('deleteTaste',null,id).then(function(){showToast('삭제되었습니다.');loadTastes()}).catch(function(e){showToast('오류: '+e.message)})}
+function removeTaste(id){
+  if(!confirm('이 취향을 삭제하시겠습니까?'))return;
+  // 낙관적 삭제: 캐시에서 즉시 제거
+  var idx=tastesCache.findIndex(function(t){return t.id===id});
+  if(idx<0)return;
+  var removed=tastesCache.splice(idx,1)[0];
+  saveTasteCache();renderTastes();
+  apiWrite('deleteTaste',null,id).catch(function(e){
+    // 실패 시 롤백
+    tastesCache.splice(idx,0,removed);saveTasteCache();renderTastes();
+    showToast('삭제 실패: '+e.message);
+  });
+}
 
 function syncCalendar(){
   var b=document.getElementById('syncBtn');b.disabled=true;b.textContent='동기화 중…';
