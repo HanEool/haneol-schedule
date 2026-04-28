@@ -12,6 +12,7 @@ const SHEET_ROUTINE = '루틴';
 const SHEET_EVENT = '일정';
 const SHEET_CARE = '케어';
 const SHEET_TASTE = '취향';
+const SHEET_HUMOR = '유머';
 const DATA_START_ROW = 4; // Row1=시스템, Row2=공백, Row3=헤더, Row4~=데이터
 
 // ============================================================
@@ -94,6 +95,18 @@ function doGet(e) {
         break;
       case 'deleteTaste':
         result = deleteTaste(id);
+        break;
+      case 'getHumors':
+        result = getHumors();
+        break;
+      case 'addHumor':
+        result = addHumor(data);
+        break;
+      case 'updateHumor':
+        result = updateHumor(data);
+        break;
+      case 'deleteHumor':
+        result = deleteHumor(id);
         break;
       default:
         result = { error: 'Unknown action: ' + action };
@@ -612,6 +625,93 @@ function deleteTaste(id) {
     }
   }
   return { error: 'Taste not found' };
+}
+
+// ============================================================
+// 유머 CRUD (유머러스한 기억)
+// ============================================================
+
+function ensureHumorSheet() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_HUMOR);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_HUMOR);
+    sheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 유머');
+    sheet.getRange(3, 1, 1, 6).setValues([[
+      '아이디', '제목', '내용', '태그', '날짜', '추가일시'
+    ]]);
+  }
+  return sheet;
+}
+
+function getHumors() {
+  const sheet = ensureHumorSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return [];
+
+  const data = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 6).getValues();
+  return data.filter(row => row[0] !== '').map(row => ({
+    id: row[0],
+    title: row[1] || '',
+    content: row[2] || '',
+    tags: row[3] || '',
+    date: row[4] ? formatDateVal(row[4]) : '',
+    addedAt: row[5] ? formatDateVal(row[5]) : ''
+  }));
+}
+
+function addHumor(data) {
+  const sheet = ensureHumorSheet();
+  const id = generateId('humor');
+  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+
+  sheet.appendRow([
+    id,
+    data.title || '',
+    data.content || '',
+    data.tags || '',
+    data.date || '',
+    today
+  ]);
+
+  return { success: true, id: id };
+}
+
+function updateHumor(data) {
+  const sheet = ensureHumorSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return { error: 'No data' };
+
+  const ids = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === data.id) {
+      const row = DATA_START_ROW + i;
+      // 추가일시(6열)는 보존, 나머지만 업데이트
+      sheet.getRange(row, 2, 1, 4).setValues([[
+        data.title || '',
+        data.content || '',
+        data.tags || '',
+        data.date || ''
+      ]]);
+      return { success: true };
+    }
+  }
+  return { error: 'Humor not found' };
+}
+
+function deleteHumor(id) {
+  const sheet = ensureHumorSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < DATA_START_ROW) return { error: 'No data' };
+
+  const ids = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) {
+      sheet.deleteRow(DATA_START_ROW + i);
+      return { success: true };
+    }
+  }
+  return { error: 'Humor not found' };
 }
 
 // ============================================================
@@ -1172,6 +1272,16 @@ function initializeSheets() {
   tasteSheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 취향');
   tasteSheet.getRange(3, 1, 1, 7).setValues([[
     '아이디', '카테고리', '제목', '부가정보', '별점', '메모', '추가일시'
+  ]]);
+
+  // 유머 시트
+  let humorSheet = ss.getSheetByName(SHEET_HUMOR);
+  if (!humorSheet) {
+    humorSheet = ss.insertSheet(SHEET_HUMOR);
+  }
+  humorSheet.getRange(1, 1).setValue('한얼 스케줄 관리 시스템 - 유머');
+  humorSheet.getRange(3, 1, 1, 6).setValues([[
+    '아이디', '제목', '내용', '태그', '날짜', '추가일시'
   ]]);
 
   return { success: true, message: '시트 초기화 완료' };
