@@ -477,6 +477,10 @@ function loadTheme(){var s=localStorage.getItem('scheduleTheme')||'bright';docum
 function apiGet(p){return fetch(API_URL+'?'+new URLSearchParams(p)).then(function(r){return r.text()}).then(function(t){try{return JSON.parse(t)}catch(e){console.error('API:',t);throw new Error('API 응답 오류')}})}
 function apiWrite(action,data,id){var p={action:action};if(data)p.data=JSON.stringify(data);if(id)p.id=id;return fetch(API_URL+'?'+new URLSearchParams(p)).then(function(r){return r.text()}).then(function(t){var j;try{j=JSON.parse(t)}catch(e){console.error('API raw:',t.substring(0,500));throw new Error('API 응답 파싱 실패')}if(j.error)throw new Error(j.error);return j})}
 
+// localStorage 캐시 헬퍼 (꺼내쓰기 편하게)
+function saveLS(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function loadLS(k){try{var s=localStorage.getItem(k);return s?JSON.parse(s):null}catch(e){return null}}
+
 function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2500)}
 
 function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===n)});document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.toggle('active',p.id==='panel-'+n)});if(n==='week')loadWeekView();else if(n==='routine')loadRoutines();else if(n==='event')loadEvents();else if(n==='care')loadCares();else if(n==='taste')loadTastes()}
@@ -487,10 +491,17 @@ function formatDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStar
 function changeWeek(dir){currentWeekDate.setDate(currentWeekDate.getDate()+dir*7);loadWeekView()}
 
 function loadWeekView(){
-  var c=document.getElementById('weekView');c.innerHTML='<div class="loading">불러오는 중...</div>';
+  var c=document.getElementById('weekView');
   var mon=getMonday(currentWeekDate),sun=new Date(mon);sun.setDate(mon.getDate()+6);
   document.getElementById('weekLabel').textContent=(mon.getMonth()+1)+'월 '+mon.getDate()+'일 — '+(sun.getMonth()+1)+'월 '+sun.getDate()+'일';
-  apiGet({action:'getWeekView',date:formatDate(currentWeekDate)}).then(function(d){renderWeekView(d,mon)}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+  // 캐시 적중 시 즉시 렌더 (현재 주간만)
+  var cached=loadLS('weekViewCache');
+  var monStr=formatDate(mon);
+  if(cached&&cached.weekStart===monStr)renderWeekView(cached,mon);
+  else c.innerHTML='<div class="loading">불러오는 중...</div>';
+  apiGet({action:'getWeekView',date:formatDate(currentWeekDate)}).then(function(d){
+    saveLS('weekViewCache',d);renderWeekView(d,mon);
+  }).catch(function(){if(!cached||cached.weekStart!==monStr)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
 }
 
 function renderWeekView(data,monday){
@@ -540,14 +551,21 @@ function getConsecutiveDays(r){
 }
 
 function loadRoutines(){
-  var c=document.getElementById('routineList');c.innerHTML='<div class="loading">불러오는 중...</div>';
-  apiGet({action:'getRoutines'}).then(function(d){routinesCache=d;renderRoutines()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+  var c=document.getElementById('routineList');
+  if(!routinesCache.length){var saved=loadLS('routinesCache');if(saved)routinesCache=saved}
+  if(routinesCache.length)renderRoutines();
+  else c.innerHTML='<div class="loading">불러오는 중...</div>';
+  apiGet({action:'getRoutines'}).then(function(d){
+    var pending=routinesCache.filter(function(r){return r._pending});
+    routinesCache=d.concat(pending);saveLS('routinesCache',routinesCache);renderRoutines();
+  }).catch(function(){if(!routinesCache.length)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
 }
 function renderRoutines(){
   var c=document.getElementById('routineList');
   if(!routinesCache.length){c.innerHTML='<div class="empty-state">등록된 루틴이 없습니다.</div>';return}
   var all=['월','화','수','목','금','토','일'];
   c.innerHTML=routinesCache.map(function(r){
+    var pmk=r._pending?' card-pending':'';
     var isInt=isIntervalRoutine(r),isCon=isConsecutiveRoutine(r);
     var extra='';if(r.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+r.address+'</div>';if(r.memo)extra+='<div class="card-meta" style="margin-top:4px">'+r.memo+'</div>';
     var actions='<div class="card-actions"><button class="btn-sm" onclick="editRoutine(\''+r.id+'\')">수정</button><button class="btn-sm danger" onclick="removeRoutine(\''+r.id+'\')">삭제</button></div>';
@@ -555,17 +573,17 @@ function renderRoutines(){
     if(isInt){
       var intDays=getIntervalDays(r);
       var startText=r.startDate?r.startDate+' ~':'';
-      return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">'+intDays+'일 간격'+(startText?' ('+startText+')':'')+'</div></div>';
+      return '<div class="card'+pmk+'">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">'+intDays+'일 간격'+(startText?' ('+startText+')':'')+'</div></div>';
     }
     if(isCon){
       var n=getConsecutiveDays(r);
-      return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">연속 '+n+'일 ('+r.startDate+' ~ '+r.endDate+')</div></div>';
+      return '<div class="card'+pmk+'">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+'</div>'+extra+'<div class="consecutive-badge">연속 '+n+'일 ('+r.startDate+' ~ '+r.endDate+')</div></div>';
     }
-    var ad=r.dayOfWeek.split(',').map(function(d){return d.trim()});
+    var ad=(r.dayOfWeek||'').split(',').map(function(d){return d.trim()});
     var chips=all.map(function(d){return '<span class="day-chip'+(ad.includes(d)?' active':'')+'">'+d+'</span>'}).join('');
     var pt='';if(r.startDate&&r.endDate)pt=r.startDate+' ~ '+r.endDate;else if(r.startDate)pt=r.startDate+' ~';else if(r.endDate)pt='~ '+r.endDate;
     var pl=pt?' <span class="badge badge-modified">'+pt+'</span>':'';
-    return '<div class="card">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div></div>';
+    return '<div class="card'+pmk+'">'+header+'<div class="card-meta">'+r.startTime+' – '+r.endTime+pl+'</div>'+extra+'<div class="day-chips">'+chips+'</div></div>';
   }).join('');
 }
 function openRoutineForm(r){
@@ -602,43 +620,82 @@ function openRoutineForm(r){
 }
 function editRoutine(id){var r=routinesCache.find(function(r){return r.id===id});if(r)openRoutineForm(r)}
 function saveRoutine(){
-  if(isSaving)return;
   var id=document.getElementById('routineEditId').value,title=document.getElementById('routineTitle').value.trim(),
     st=document.getElementById('routineStart').value,et=document.getElementById('routineEnd').value;
   var dayOfWeek,startDate,endDate;
   if(routineMode==='interval'){
     var intStart=document.getElementById('routineIntervalStart').value,intDays=parseInt(document.getElementById('routineIntervalDays').value);
     if(!title||!st||!et||!intStart||!intDays){showToast('모든 항목을 입력해주세요.');return}
-    dayOfWeek='간격:'+intDays;
-    startDate=intStart;
-    endDate='';
+    dayOfWeek='간격:'+intDays;startDate=intStart;endDate='';
   }else if(routineMode==='consecutive'){
     var consecStart=document.getElementById('routineConsecStart').value,consecDays=parseInt(document.getElementById('routineConsecDays').value);
     if(!title||!st||!et||!consecStart||!consecDays){showToast('모든 항목을 입력해주세요.');return}
-    dayOfWeek='월,화,수,목,금,토,일';
-    startDate=consecStart;
-    var ed=new Date(consecStart+'T00:00:00');ed.setDate(ed.getDate()+consecDays-1);
-    endDate=formatDate(ed);
+    dayOfWeek='월,화,수,목,금,토,일';startDate=consecStart;
+    var ed=new Date(consecStart+'T00:00:00');ed.setDate(ed.getDate()+consecDays-1);endDate=formatDate(ed);
   }else{
     var sd=[];document.querySelectorAll('#daySelector .day-toggle.selected').forEach(function(b){sd.push(b.dataset.day)});
     if(!title||!st||!et||!sd.length){showToast('모든 항목을 입력해주세요.');return}
-    dayOfWeek=sd.join(',');
-    startDate=document.getElementById('routineStartDate').value||'';
-    endDate=document.getElementById('routineEndDate').value||'';
+    dayOfWeek=sd.join(',');startDate=document.getElementById('routineStartDate').value||'';endDate=document.getElementById('routineEndDate').value||'';
   }
-  isSaving=true;setSaveBtn('routineFormOverlay',true);
   var data={title:title,startTime:st,endTime:et,dayOfWeek:dayOfWeek,startDate:startDate,endDate:endDate,address:document.getElementById('routineAddress').value||'',memo:document.getElementById('routineMemo').value||''};
+  // 낙관적 업데이트
+  var tempId,prevState;
+  if(id){
+    var idx=routinesCache.findIndex(function(r){return r.id===id});
+    if(idx>=0){prevState=Object.assign({},routinesCache[idx]);Object.assign(routinesCache[idx],data)}
+  } else {
+    tempId='temp_'+Date.now();
+    routinesCache.push(Object.assign({id:tempId,calendarEventId:'',_pending:true},data));
+  }
+  saveLS('routinesCache',routinesCache);renderRoutines();closeForm('routineFormOverlay');
+  // 백그라운드 동기화 (캘린더 부수효과는 백엔드가 처리)
   var p;if(id){data.id=id;p=apiWrite('updateRoutine',data)}else{p=apiWrite('addRoutine',data)}
-  p.then(function(){showToast(id?'루틴이 수정되었습니다.':'루틴이 추가되었습니다.');closeForm('routineFormOverlay');loadRoutines()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('routineFormOverlay',false)});
+  p.then(function(r){
+    if(tempId&&r.id){
+      var idx=routinesCache.findIndex(function(rr){return rr.id===tempId});
+      if(idx>=0){routinesCache[idx].id=r.id;routinesCache[idx].calendarEventId=r.calendarEventId||'';delete routinesCache[idx]._pending;saveLS('routinesCache',routinesCache);renderRoutines()}
+    }
+    // 루틴 변경은 주간뷰에 영향 → 주간뷰 캐시 무효화
+    localStorage.removeItem('weekViewCache');
+  }).catch(function(e){
+    if(tempId){
+      var idx=routinesCache.findIndex(function(rr){return rr.id===tempId});
+      if(idx>=0)routinesCache.splice(idx,1);
+    } else if(prevState){
+      var idx=routinesCache.findIndex(function(rr){return rr.id===id});
+      if(idx>=0)routinesCache[idx]=prevState;
+    }
+    saveLS('routinesCache',routinesCache);renderRoutines();
+    showToast('저장 실패: '+e.message);
+  });
 }
-function removeRoutine(id){if(!confirm('이 루틴을 삭제하시겠습니까?'))return;apiWrite('deleteRoutine',null,id).then(function(){showToast('삭제되었습니다.');loadRoutines()}).catch(function(e){showToast('오류: '+e.message)})}
+function removeRoutine(id){
+  if(!confirm('이 루틴을 삭제하시겠습니까?'))return;
+  var idx=routinesCache.findIndex(function(r){return r.id===id});
+  if(idx<0)return;
+  var removed=routinesCache.splice(idx,1)[0];
+  saveLS('routinesCache',routinesCache);renderRoutines();
+  apiWrite('deleteRoutine',null,id).then(function(){
+    localStorage.removeItem('weekViewCache');
+  }).catch(function(e){
+    routinesCache.splice(idx,0,removed);saveLS('routinesCache',routinesCache);renderRoutines();
+    showToast('삭제 실패: '+e.message);
+  });
+}
 
-function changeEventMonth(d){currentEventMonth.setMonth(currentEventMonth.getMonth()+d);loadEvents()}
+function changeEventMonth(d){currentEventMonth.setMonth(currentEventMonth.getMonth()+d);eventsCache=[];loadEvents()}
+function eventsCacheKey(){return 'eventsCache_'+currentEventMonth.getFullYear()+'_'+(currentEventMonth.getMonth()+1)}
 function loadEvents(){
-  var c=document.getElementById('eventList');c.innerHTML='<div class="loading">불러오는 중...</div>';
+  var c=document.getElementById('eventList');
   var y=currentEventMonth.getFullYear(),m=currentEventMonth.getMonth();
   document.getElementById('eventMonthLabel').textContent=y+'년 '+(m+1)+'월';
-  apiGet({action:'getEvents',startDate:formatDate(new Date(y,m,1)),endDate:formatDate(new Date(y,m+1,0))}).then(function(d){eventsCache=d;renderEvents()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+  if(!eventsCache.length){var saved=loadLS(eventsCacheKey());if(saved)eventsCache=saved}
+  if(eventsCache.length)renderEvents();
+  else c.innerHTML='<div class="loading">불러오는 중...</div>';
+  apiGet({action:'getEvents',startDate:formatDate(new Date(y,m,1)),endDate:formatDate(new Date(y,m+1,0))}).then(function(d){
+    var pending=eventsCache.filter(function(e){return e._pending});
+    eventsCache=d.concat(pending);saveLS(eventsCacheKey(),eventsCache);renderEvents();
+  }).catch(function(){if(!eventsCache.length)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
 }
 function renderEvents(){
   var c=document.getElementById('eventList');
@@ -648,7 +705,8 @@ function renderEvents(){
     if(e.status==='cancelled'){bc='badge-cancelled';bt='취소'}else if(e.status==='modified'){bc='badge-modified';bt='변경'}else if(e.routineId){bc='badge-modified';bt='예외'}
     var dn=DAY_NAMES[new Date(e.date+'T00:00:00').getDay()];
     var extra='';if(e.address)extra+='<div class="card-meta" style="margin-top:4px">📍 '+e.address+'</div>';if(e.memo)extra+='<div class="card-meta" style="margin-top:4px">'+e.memo+'</div>';
-    return '<div class="card"><div class="card-header"><span class="card-title">'+(e.status==='cancelled'?'<s>'+e.title+'</s>':e.title)+'</span><div class="card-actions">'+(e.status!=='cancelled'?'<button class="btn-sm" onclick="editEvent(\''+e.id+'\')">수정</button>':'')+'<button class="btn-sm danger" onclick="removeEvent(\''+e.id+'\')">삭제</button></div></div><div class="card-meta">'+e.date+' ('+dn+') · '+e.startTime+' – '+e.endTime+' <span class="badge '+bc+'">'+bt+'</span>'+(e.source==='calendar'?' <span class="via-cal">via 캘린더</span>':'')+'</div>'+extra+'</div>';
+    var pmk=e._pending?' card-pending':'';
+    return '<div class="card'+pmk+'"><div class="card-header"><span class="card-title">'+(e.status==='cancelled'?'<s>'+e.title+'</s>':e.title)+'</span><div class="card-actions">'+(e.status!=='cancelled'?'<button class="btn-sm" onclick="editEvent(\''+e.id+'\')">수정</button>':'')+'<button class="btn-sm danger" onclick="removeEvent(\''+e.id+'\')">삭제</button></div></div><div class="card-meta">'+e.date+' ('+dn+') · '+e.startTime+' – '+e.endTime+' <span class="badge '+bc+'">'+bt+'</span>'+(e.source==='calendar'?' <span class="via-cal">via 캘린더</span>':'')+'</div>'+extra+'</div>';
   }).join('');
 }
 function openEventForm(ev){
@@ -664,22 +722,64 @@ function openEventForm(ev){
 }
 function editEvent(id){var e=eventsCache.find(function(e){return e.id===id});if(e)openEventForm(e)}
 function saveEvent(){
-  if(isSaving)return;
   var id=document.getElementById('eventEditId').value,title=document.getElementById('eventTitle').value.trim(),
     date=document.getElementById('eventDate').value,st=document.getElementById('eventStart').value,et=document.getElementById('eventEnd').value;
   if(!title||!date||!st||!et){showToast('모든 항목을 입력해주세요.');return}
-  isSaving=true;setSaveBtn('eventFormOverlay',true);
   var data={title:title,date:date,startTime:st,endTime:et,address:document.getElementById('eventAddress').value||'',memo:document.getElementById('eventMemo').value||''};
-  var p;
-  if(id){data.id=id;var ex=eventsCache.find(function(e){return e.id===id});data.source=ex?ex.source:'sheets';data.routineId=ex?ex.routineId:'';data.status=ex?ex.status:'active';p=apiWrite('updateEvent',data)}
-  else{p=apiWrite('addEvent',data)}
-  p.then(function(){showToast(id?'일정이 수정되었습니다.':'일정이 추가되었습니다.');closeForm('eventFormOverlay');loadEvents()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('eventFormOverlay',false)});
+  // 낙관적 업데이트
+  var tempId,prevState;
+  if(id){
+    var idx=eventsCache.findIndex(function(e){return e.id===id});
+    if(idx>=0){prevState=Object.assign({},eventsCache[idx]);Object.assign(eventsCache[idx],data)}
+    var ex=eventsCache.find(function(e){return e.id===id});
+    data.source=ex?ex.source:'sheets';data.routineId=ex?ex.routineId:'';data.status=ex?ex.status:'active';
+  } else {
+    tempId='temp_'+Date.now();
+    eventsCache.push(Object.assign({id:tempId,source:'sheets',routineId:'',status:'active',calendarEventId:'',_pending:true},data));
+  }
+  saveLS(eventsCacheKey(),eventsCache);renderEvents();closeForm('eventFormOverlay');
+  var p;if(id){data.id=id;p=apiWrite('updateEvent',data)}else{p=apiWrite('addEvent',data)}
+  p.then(function(r){
+    if(tempId&&r.id){
+      var idx=eventsCache.findIndex(function(e){return e.id===tempId});
+      if(idx>=0){eventsCache[idx].id=r.id;eventsCache[idx].calendarEventId=r.calendarEventId||'';delete eventsCache[idx]._pending;saveLS(eventsCacheKey(),eventsCache);renderEvents()}
+    }
+    localStorage.removeItem('weekViewCache');
+  }).catch(function(e){
+    if(tempId){
+      var idx=eventsCache.findIndex(function(ee){return ee.id===tempId});
+      if(idx>=0)eventsCache.splice(idx,1);
+    } else if(prevState){
+      var idx=eventsCache.findIndex(function(ee){return ee.id===id});
+      if(idx>=0)eventsCache[idx]=prevState;
+    }
+    saveLS(eventsCacheKey(),eventsCache);renderEvents();
+    showToast('저장 실패: '+e.message);
+  });
 }
-function removeEvent(id){if(!confirm('이 일정을 삭제하시겠습니까?'))return;apiWrite('deleteEvent',null,id).then(function(){showToast('삭제되었습니다.');loadEvents()}).catch(function(e){showToast('오류: '+e.message)})}
+function removeEvent(id){
+  if(!confirm('이 일정을 삭제하시겠습니까?'))return;
+  var idx=eventsCache.findIndex(function(e){return e.id===id});
+  if(idx<0)return;
+  var removed=eventsCache.splice(idx,1)[0];
+  saveLS(eventsCacheKey(),eventsCache);renderEvents();
+  apiWrite('deleteEvent',null,id).then(function(){
+    localStorage.removeItem('weekViewCache');
+  }).catch(function(e){
+    eventsCache.splice(idx,0,removed);saveLS(eventsCacheKey(),eventsCache);renderEvents();
+    showToast('삭제 실패: '+e.message);
+  });
+}
 
 function loadCares(){
-  var c=document.getElementById('careList');c.innerHTML='<div class="loading">불러오는 중...</div>';
-  apiGet({action:'getCares'}).then(function(d){caresCache=d;renderCares()}).catch(function(){c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
+  var c=document.getElementById('careList');
+  if(!caresCache.length){var saved=loadLS('caresCache');if(saved)caresCache=saved}
+  if(caresCache.length)renderCares();
+  else c.innerHTML='<div class="loading">불러오는 중...</div>';
+  apiGet({action:'getCares'}).then(function(d){
+    var pending=caresCache.filter(function(c){return c._pending});
+    caresCache=d.concat(pending);saveLS('caresCache',caresCache);renderCares();
+  }).catch(function(){if(!caresCache.length)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>'});
 }
 function getCareStatus(care){
   var cycle=parseInt(care.cycle);
@@ -723,13 +823,14 @@ function renderCares(){
     var s=getCareStatus(care),dur=parseInt(care.duration)||1;
     var kwText=care.keywords?'<div class="card-meta" style="margin-top:4px">🔍 '+care.keywords+'</div>':'';
     var memoText=care.memo?'<div class="card-meta" style="margin-top:4px">'+care.memo+'</div>':'';
+    var pmk=care._pending?' card-pending':'';
     if(s.isHabit){
-      return '<div class="card"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta"><span class="care-status care-habit">습관</span></div>'+kwText+memoText+'</div>';
+      return '<div class="card'+pmk+'"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta"><span class="care-status care-habit">습관</span></div>'+kwText+memoText+'</div>';
     }
     var cycleText=care.cycle+'일 주기'+(dur>1?' · '+dur+'일간 진행':'');
     var lastText=care.lastDone?'마지막: '+care.lastDone:'마지막: -';
     var nextText=care.nextDate?'예정: '+care.nextDate:'';
-    return '<div class="card"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="markCareDone(\''+care.id+'\')">완료</button><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta">'+cycleText+' <span class="care-status care-'+s.cls+'">'+s.label+'</span></div><div class="card-meta" style="margin-top:4px">'+lastText+(nextText?' · '+nextText:'')+'</div>'+kwText+memoText+'<div class="care-progress"><div class="care-progress-bar '+s.cls+'" style="width:'+Math.round(s.progress*100)+'%"></div></div></div>';
+    return '<div class="card'+pmk+'"><div class="card-header"><span class="card-title">'+care.title+'</span><div class="card-actions"><button class="btn-sm" onclick="markCareDone(\''+care.id+'\')">완료</button><button class="btn-sm" onclick="editCare(\''+care.id+'\')">수정</button><button class="btn-sm danger" onclick="removeCare(\''+care.id+'\')">삭제</button></div></div><div class="card-meta">'+cycleText+' <span class="care-status care-'+s.cls+'">'+s.label+'</span></div><div class="card-meta" style="margin-top:4px">'+lastText+(nextText?' · '+nextText:'')+'</div>'+kwText+memoText+'<div class="care-progress"><div class="care-progress-bar '+s.cls+'" style="width:'+Math.round(s.progress*100)+'%"></div></div></div>';
   }).join('');
 }
 function openCareForm(care){
@@ -746,22 +847,62 @@ function openCareForm(care){
 }
 function editCare(id){var c=caresCache.find(function(c){return c.id===id});if(c)openCareForm(c)}
 function saveCare(){
-  if(isSaving)return;
   var id=document.getElementById('careEditId').value,title=document.getElementById('careTitle').value.trim(),
     cycle=document.getElementById('careCycle').value;
   if(!title){showToast('이름을 입력해주세요.');return}
-  isSaving=true;setSaveBtn('careFormOverlay',true);
   var data={title:title,cycle:cycle,duration:document.getElementById('careDuration').value||'1',lastDone:document.getElementById('careLastDone').value||'',nextDate:document.getElementById('careNextDate').value||'',keywords:document.getElementById('careKeywords').value||'',memo:document.getElementById('careMemo').value||''};
+  // 낙관적 업데이트
+  var tempId,prevState;
+  if(id){
+    var idx=caresCache.findIndex(function(c){return c.id===id});
+    if(idx>=0){prevState=Object.assign({},caresCache[idx]);Object.assign(caresCache[idx],data)}
+  } else {
+    tempId='temp_'+Date.now();
+    caresCache.push(Object.assign({id:tempId,_pending:true},data));
+  }
+  saveLS('caresCache',caresCache);renderCares();closeForm('careFormOverlay');
   var p;if(id){data.id=id;p=apiWrite('updateCare',data)}else{p=apiWrite('addCare',data)}
-  p.then(function(){showToast(id?'케어가 수정되었습니다.':'케어가 추가되었습니다.');closeForm('careFormOverlay');loadCares()}).catch(function(e){showToast('오류: '+e.message)}).finally(function(){isSaving=false;setSaveBtn('careFormOverlay',false)});
+  p.then(function(r){
+    if(tempId&&r.id){
+      var idx=caresCache.findIndex(function(c){return c.id===tempId});
+      if(idx>=0){caresCache[idx].id=r.id;delete caresCache[idx]._pending;saveLS('caresCache',caresCache);renderCares()}
+    }
+  }).catch(function(e){
+    if(tempId){
+      var idx=caresCache.findIndex(function(c){return c.id===tempId});
+      if(idx>=0)caresCache.splice(idx,1);
+    } else if(prevState){
+      var idx=caresCache.findIndex(function(c){return c.id===id});
+      if(idx>=0)caresCache[idx]=prevState;
+    }
+    saveLS('caresCache',caresCache);renderCares();
+    showToast('저장 실패: '+e.message);
+  });
 }
 function setCareFilter(tag){careFilterTag=tag;renderCares()}
-function removeCare(id){if(!confirm('이 케어 항목을 삭제하시겠습니까?'))return;apiWrite('deleteCare',null,id).then(function(){showToast('삭제되었습니다.');loadCares()}).catch(function(e){showToast('오류: '+e.message)})}
+function removeCare(id){
+  if(!confirm('이 케어 항목을 삭제하시겠습니까?'))return;
+  var idx=caresCache.findIndex(function(c){return c.id===id});
+  if(idx<0)return;
+  var removed=caresCache.splice(idx,1)[0];
+  saveLS('caresCache',caresCache);renderCares();
+  apiWrite('deleteCare',null,id).catch(function(e){
+    caresCache.splice(idx,0,removed);saveLS('caresCache',caresCache);renderCares();
+    showToast('삭제 실패: '+e.message);
+  });
+}
 function markCareDone(id){
   var care=caresCache.find(function(c){return c.id===id});if(!care)return;
   if(!confirm(care.title+' — 오늘 완료로 기록할까요?'))return;
-  var data={id:care.id,title:care.title,cycle:care.cycle,duration:care.duration,lastDone:formatDate(new Date()),nextDate:care.nextDate||'',keywords:care.keywords||'',memo:care.memo||''};
-  apiWrite('updateCare',data).then(function(){showToast('완료 기록됨');loadCares()}).catch(function(e){showToast('오류: '+e.message)});
+  // 낙관적 업데이트
+  var prevLastDone=care.lastDone;
+  care.lastDone=formatDate(new Date());
+  saveLS('caresCache',caresCache);renderCares();
+  var data={id:care.id,title:care.title,cycle:care.cycle,duration:care.duration,lastDone:care.lastDone,nextDate:care.nextDate||'',keywords:care.keywords||'',memo:care.memo||''};
+  apiWrite('updateCare',data).catch(function(e){
+    care.lastDone=prevLastDone;saveLS('caresCache',caresCache);renderCares();
+    showToast('실패: '+e.message);
+  });
 }
 
 function loadTastes(){
@@ -782,7 +923,7 @@ function loadTastes(){
     if(!tastesCache.length)c.innerHTML='<div class="empty-state">데이터를 불러올 수 없습니다.</div>';
   });
 }
-function saveTasteCache(){try{localStorage.setItem('tastesCache',JSON.stringify(tastesCache))}catch(e){}}
+function saveTasteCache(){saveLS('tastesCache',tastesCache)}
 function renderTastes(){
   var c=document.getElementById('tasteList');
   if(!tastesCache.length){c.innerHTML='<div class="empty-state">등록된 취향이 없습니다. 영화, 음악, 전시 등을 추가해보세요.</div>';return}
@@ -904,7 +1045,14 @@ function setSaveBtn(oid,loading){var b=document.querySelector('#'+oid+' .btn-pri
 document.querySelectorAll('#daySelector .day-toggle').forEach(function(b){b.addEventListener('click',function(){b.classList.toggle('selected')})});
 document.querySelectorAll('.form-overlay').forEach(function(o){o.addEventListener('click',function(e){if(e.target===o)o.classList.remove('open')})});
 
-loadTheme();loadWeekView();
+loadTheme();
+loadWeekView();
+// 첫 로드 시 다른 탭 데이터도 병렬로 미리 받아둠 (캐시 워밍업)
+// 실패해도 무시 — 사용자가 해당 탭 진입 시 다시 시도됨
+loadRoutines();
+loadCares();
+loadTastes();
+loadEvents();
 </script>
 </body>
 </html>
